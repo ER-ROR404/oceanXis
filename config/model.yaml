@@ -1,13 +1,18 @@
 # --- Model architecture parameters (config/model.yaml) ---
-# Source of truth: docs/05-ml/model-architecture.md + feature-specification.md.
-# The CNN encoder-decoder below is a PROPOSED baseline, NOT a locked requirement (§17).
+# Source of truth: docs/05-ml/model-architecture.md + feature-specification.md + ADR-010.
+#
+# STAGED decision (ADR-010): CNN = baseline (Stage 1); CNN + ConvLSTM = PRIMARY (Stage 2);
+# Transformer/attention = optional experiment post-baseline.
+# T, channel dims and kernel sizes are PROPOSED/experimental but FIXED for v1 via this config (§148).
 
-model_name: oceanembed-cnn
+model_name: oceanembed-hybrid
 version: 0.1.0
 
-# Tensor contract (LOCKED shapes — see contracts/ml/model-input/output.schema.json).
+# Tensor contracts (LOCKED shapes — see contracts/ml/model-input/output.schema.json).
+# ADR-010: Stage-2 input gains a time (lookback) axis T.
 input:
   channels: 7
+  lookback_days: 10            # T — PROPOSED, fixed for v1 (config-only to change); windows of daily fields
   dtype: float32
 output:
   channels: 15
@@ -17,27 +22,42 @@ uncertainty:
   enabled: false          # Gaussian heteroscedastic head is a differentiation, post-baseline (§21, §25)
   variance_min: 0.0
 
-architecture:            # PROPOSED baseline encoder-decoder (experimental values, §148)
-  type: cnn_encoder_decoder
-  encoder:
+# PRIMARY (Stage 2): CNN + ConvLSTM hybrid (ADR-010, Su et al. 2022 ConvLSTM style)
+architecture:
+  type: cnn_lstm_hybrid
+  spatial_encoder:          # per time-step, shared weights
     conv_channels: [32, 64, 128]
     kernel_size: 3
     padding: 1
     activation: relu
     use_batchnorm: true
+  temporal:                 # ConvLSTM stack — spatial + temporal jointly; keeps the spatial grid
+    convlstm_channels: [128, 128]
+    kernel_size: 3
+    padding: 1
+    layers: 2
+    collapse_time: true     # take final-timestep hidden state → [B,128,H,W]
   decoder:
     conv_channels: [128, 64, 32]
     output_channels: 15
     kernel_size: 3
     padding: 1
     activation: relu
-  variant: plain        # optional: unet (skip connections) post-baseline
+  variant: plain            # optional: unet (skip connections) post-baseline
   depth_conditioning: false
 
-baselines:               # comparison targets (docs/05-ml/evaluation-policy.md)
+# Stage 1 baseline comparator (PROPOSED only — for credibility, §30/§91):
+# plain single-day CNN encoder-decoder [B,7,H,W] → [B,15,H,W]. NOT the MVP model.
+baseline_comparator:
   enabled: true
+  architecture: cnn_encoder_decoder
+  spatial_encoder:
+    conv_channels: [32, 64, 128]
+  decoder:
+    conv_channels: [128, 64, 32]
   candidates: [climatology, persistence]
 
 inference:
   runtime: cpu_or_gpu
   min_dependencies: true   # inference image excludes training stack (RULE 3, dependency isolation)
+  lookback_required: true  # Stage-2 serving consumes a T-day lookback window of surface fields

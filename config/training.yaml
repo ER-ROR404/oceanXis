@@ -10,6 +10,15 @@ split:
   exact_years: null              # chosen only after coverage-overlap verification (§126)
   test_untouched_during_tuning: true
 
+# Stage-2 windowing (ADR-010): T-day lookback windows ending at the target day.
+# A window requires T consecutive valid days; missing days are skipped/bridged per
+# docs/04-data/missing-data-policy.md (never fabricated). Windows NEVER straddle a fold boundary.
+window:
+  lookback_days: 10              # T — must match config/model.yaml input.lookback_days
+  require_consecutive_valid: true
+  straddle_fold_boundary: false  # LOCKED false (ADR-007) — no leakage across folds
+  target_day: last               # predict for the last day of the window
+
 normalization:
   statistics_source: training_only   # RULE 11
   method: zscore                     # (x - mean) / std per channel
