@@ -15,7 +15,7 @@ model:
 data:
   split_method: temporal_locked
   normalization_source: training_only
-  batch_size: 16
+  batch_size: 8            # matches config/training.yaml (plan §3.7)
 
 training:
   loss: masked_mse
@@ -24,6 +24,7 @@ training:
   epochs: 100
   seed: 42
   early_stopping_patience: 15
+  hardware: colab-gpu      # ADR-009: training runs on Colab GPU; local CPU runs use --check/small epochs
 
 evaluation:
   metrics: [rmse, bias, correlation]
