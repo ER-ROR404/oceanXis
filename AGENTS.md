@@ -8,6 +8,8 @@
 ```text
 AGENTS.md
     ↓
+OPENCODE_SDL_CONTRACT.md
+    ↓
 SYSTEM_MEMORY_DUMP.md
     ↓
 docs/
@@ -18,11 +20,12 @@ implementation
 ```
 
 1. `AGENTS.md` — operating rules for agents working in this repo.
-2. `SYSTEM_MEMORY_DUMP.md` — historical project memory, decisions, constraints, and source-of-truth context (SIH26066 / OceanEmbed).
-3. `docs/` — current authoritative engineering documentation.
-4. `contracts/` — versioned interface contracts (API, data, ML).
-5. `config/` — canonical runtime/domain configuration.
-6. Implementation code under `backend/`, `ml/`, `data-engineering/`, `frontend/`.
+2. `OPENCODE_SDL_CONTRACT.md` — SDLC compliance & code generation contract (phased enforcement rules).
+3. `SYSTEM_MEMORY_DUMP.md` — historical project memory, decisions, constraints, and source-of-truth context (SIH26066 / OceanEmbed).
+4. `docs/` — current authoritative engineering documentation.
+5. `contracts/` — versioned interface contracts (API, data, ML).
+6. `config/` — canonical runtime/domain configuration.
+7. Implementation code under `backend/`, `ml/`, `data-engineering/`, `frontend/`.
 
 > **Principle:** `SYSTEM_MEMORY_DUMP.md` preserves history. `docs/` and `contracts/` are the current authoritative implementation truth. If a decision changes, do not rewrite history silently — create/update an ADR and update the current contract/documentation.
 
