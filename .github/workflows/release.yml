@@ -17,7 +17,7 @@ jobs:
           TAG="${{ github.ref_name }}"
           echo "${TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           draft: true
