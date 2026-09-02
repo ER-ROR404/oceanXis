@@ -1,0 +1,32 @@
+name: ML tests
+
+on:
+  push:
+    paths:
+      - "ml/**"
+      - "contracts/ml/**"
+      - ".github/workflows/ml-tests.yml"
+  pull_request:
+    paths:
+      - "ml/**"
+      - "contracts/ml/**"
+
+jobs:
+  ml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install ML package (CPU)
+        run: |
+          pip install -e ./ml
+          pip install -r ./ml/requirements-test.txt
+      - name: Lint
+        run: ruff check ml
+      - name: ML tests (dataset, preprocessing, model shapes, losses, metrics, inference)
+        run: pytest ml/tests -q
+      - name: Coverage gate
+        run: pytest ml/tests --cov=oceanembed --cov-report=term-missing --cov-fail-under=80

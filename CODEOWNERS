@@ -1,0 +1,50 @@
+# CODEOWNERS
+
+# Root governance
+AGENTS.md                     @oceanembed/governance
+CONTRIBUTING.md               @oceanembed/governance
+SECURITY.md                   @oceanembed/security
+SYSTEM_MEMORY_DUMP.md         @oceanembed/governance
+
+# Contracts are human-reviewed
+/contracts/                   @oceanembed/contracts
+
+# Architecture docs and ADRs are human-reviewed
+/docs/02-architecture/        @oceanembed/architecture
+
+# Domain / product truth
+/docs/01-product/             @oceanembed/product
+/docs/03-domain/              @oceanembed/data @oceanembed/product
+
+# Data engineering and data truth
+/data-engineering/            @oceanembed/data
+/docs/04-data/                @oceanembed/data
+/config/                       @oceanembed/data @oceanembed/ml
+
+# ML
+/ml/                          @oceanembed/ml
+/docs/05-ml/                  @oceanembed/ml
+
+# Database migrations (immutable once applied)
+/database/                    @oceanembed/backend
+
+# Backend and API
+/backend/                     @oceanembed/backend
+/docs/06-api/                 @oceanembed/backend
+
+# Frontend
+/frontend/                    @oceanembed/frontend
+
+# Security
+/security/                    @oceanembed/security
+
+# Infrastructure / operations
+/infrastructure/              @oceanembed/operations
+/observability/               @oceanembed/operations
+/docs/07-operations/          @oceanembed/operations
+
+# Shared scripts
+/scripts/                     @oceanembed/governance
+
+# AI-agent control plane
+/.opencode/                   @oceanembed/governance

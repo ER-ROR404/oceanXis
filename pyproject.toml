@@ -1,0 +1,33 @@
+[project]
+name = "oceanembed"
+version = "0.1.0"
+description = "Satellite embedding-based deep learning framework for reconstruction of subsurface ocean temperature (SIH26066)"
+readme = "README.md"
+requires-python = ">=3.11"
+
+# NOTE: This root pyproject holds SHARED linting/formatting/testing tooling ONLY.
+# Module dependencies live in their own pyprojects:
+#   backend/pyproject.toml
+#   ml/pyproject.toml
+#   data-engineering/pyproject.toml
+#   frontend/package.json
+# Do NOT add runtime dependencies here (RULE 16, dependency isolation).
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["backend", "ml", "data-engineering", "scripts"]
+exclude = ["data", "database", "frontend/node_modules", "model-registry/models", "experiments/reports"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests", "ml/tests", "data-engineering/tests"]
+addopts = "-q"
+xfail_strict = true

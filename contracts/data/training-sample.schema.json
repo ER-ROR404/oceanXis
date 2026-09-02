@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/data/training-sample.schema.json",
+  "title": "TrainingSample",
+  "description": "One harmonized sample for training/evaluation. X normalized surface inputs, Y temperature target at 15 depths, validity mask, metadata.",
+  "type": "object",
+  "required": ["X", "Y", "mask", "metadata"],
+  "properties": {
+    "X": {
+      "type": "object",
+      "required": ["shape", "dtype", "channel_order", "values"],
+      "properties": {
+        "shape": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+        "dtype": { "const": "float32" },
+        "channel_order": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 7,
+          "maxItems": 7
+        },
+        "values": { "type": "array" }
+      }
+    },
+    "Y": {
+      "type": "object",
+      "required": ["shape", "dtype", "depth_order", "values"],
+      "properties": {
+        "shape": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+        "dtype": { "const": "float32" },
+        "depth_order": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 15,
+          "maxItems": 15
+        },
+        "values": { "type": "array" }
+      }
+    },
+    "mask": { "type": "array", "items": { "type": "boolean" }, "description": "Flattened [H,W] boolean validity mask." },
+    "metadata": {
+      "type": "object",
+      "required": ["date", "region", "lat_grid", "lon_grid", "preprocessing_version", "provenance"],
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "region": { "type": "string" },
+        "lat_grid": { "type": "array", "items": { "type": "number" } },
+        "lon_grid": { "type": "array", "items": { "type": "number" } },
+        "preprocessing_version": { "type": "string" },
+        "normalization_version": { "type": "string" },
+        "provenance": { "$ref": "provenance.schema.json" }
+      }
+    }
+  }
+}

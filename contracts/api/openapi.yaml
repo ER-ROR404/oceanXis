@@ -1,0 +1,180 @@
+openapi: 3.1.0
+info:
+  title: OceanEmbed API
+  description: >-
+    Surface-driven subsurface temperature reconstruction (SIH26066).
+    Backend-only Copernicus access. Responses conform to contracts/api/*.schema.json.
+  version: 1.0.0
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      summary: Service health (liveness; no expensive external calls)
+      operationId: getHealth
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: 'health.schema.json'
+  /ocean/history:
+    get:
+      summary: List available dates for a region
+      operationId: getOceanHistory
+      parameters:
+        - $ref: '#/components/parameters/Region'
+      responses:
+        '200':
+          description: Available dates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [region, dates]
+                properties:
+                  region: { type: string }
+                  dates:
+                    type: array
+                    items: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /ocean/map:
+    get:
+      summary: Gridded field at region/date/depth
+      operationId: getOceanMap
+      parameters:
+        - $ref: '#/components/parameters/Region'
+        - $ref: '#/components/parameters/Date'
+        - $ref: '#/components/parameters/Depth'
+      responses:
+        '200':
+          description: Gridded temperature map
+          content:
+            application/json:
+              schema:
+                $ref: 'ocean-map.schema.json'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /ocean/profile:
+    get:
+      summary: Temperature profile at a grid cell
+      operationId: getOceanProfile
+      parameters:
+        - $ref: '#/components/parameters/Region'
+        - $ref: '#/components/parameters/Date'
+        - $ref: '#/components/parameters/Latitude'
+        - $ref: '#/components/parameters/Longitude'
+      responses:
+        '200':
+          description: Grid-cell temperature profile across 15 depths
+          content:
+            application/json:
+              schema:
+                $ref: 'ocean-profile.schema.json'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /ocean/metadata:
+    get:
+      summary: Application/dataset/model metadata (no credentials, no internal dataset IDs)
+      operationId: getOceanMetadata
+      responses:
+        '200':
+          description: Metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app_name: { type: string }
+                  app_version: { type: string }
+                  regions: { type: array, items: { type: string } }
+                  model_version: { type: string }
+                  data_freshness: { type: string, format: date }
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /model/version:
+    get:
+      summary: Current served model version
+      operationId: getModelVersion
+      responses:
+        '200':
+          description: Model version
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [model_version, trained_on, data_version]
+                properties:
+                  model_version: { type: string }
+                  trained_on: { type: string, format: date, description: 'Training data period end (not claim of realtime).' }
+                  data_version: { type: string }
+components:
+  parameters:
+    Region:
+      name: region
+      in: query
+      required: true
+      schema:
+        type: string
+        enum: [bay_of_bengal, arabian_sea, north_indian_ocean]
+    Date:
+      name: date
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+        description: YYYY-MM-DD within the region's available coverage.
+    Depth:
+      name: depth
+      in: query
+      required: false
+      schema:
+        type: number
+        enum: [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000]
+        default: 0
+    Latitude:
+      name: latitude
+      in: query
+      required: true
+      schema:
+        type: number
+        minimum: 0
+        maximum: 32
+    Longitude:
+      name: longitude
+      in: query
+      required: true
+      schema:
+        type: number
+        minimum: 43
+        maximum: 107
+  responses:
+    BadRequest:
+      description: Validation failure
+      content:
+        application/json:
+          schema:
+            $ref: 'error.schema.json'
+    NotFound:
+      description: Data unavailable for the requested date
+      content:
+        application/json:
+          schema:
+            $ref: 'error.schema.json'
+    Unavailable:
+      description: Service degraded (model/cache/data unavailable)
+      content:
+        application/json:
+          schema:
+            $ref: 'error.schema.json'

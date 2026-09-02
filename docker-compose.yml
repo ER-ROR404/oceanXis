@@ -1,0 +1,63 @@
+# OceanEmbed — baseline multi-container local/integration environment.
+# Skeleton only: services are wired once implementations exist.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://oceanembed:oceanembed@database:5432/oceanembed
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  ml-inference:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/ml-inference.Dockerfile
+    environment:
+      - MODEL_PATH=/models
+    volumes:
+      - model-registry:/models:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/frontend.Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+  database:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=oceanembed
+      - POSTGRES_PASSWORD=oceanembed
+      - POSTGRES_DB=oceanembed
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oceanembed"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  model-registry:

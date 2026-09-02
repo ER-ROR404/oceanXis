@@ -1,0 +1,64 @@
+# --- OceanEmbed .dockerignore ---
+# Prevent unnecessary source files, datasets, credentials, and local artifacts
+# from entering Docker build contexts.
+
+# VCS
+.git
+.gitignore
+
+# CI / tooling
+.github
+.opencode
+
+# Environments / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Data (datasets must never enter image layers)
+data/
+*.nc
+*.nc4
+*.zarr
+*.h5
+*.hdf5
+
+# Model checkpoints
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+model-registry/models/
+checkpoints/
+mlruns/
+wandb/
+artifacts/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / frontend build artifacts
+node_modules/
+frontend/dist/
+.vite/
+
+# Logs / OS
+*.log
+.DS_Store
+
+# Tests and local-only files (kept out of image layering)
+backend/tests/
+ml/tests/
+data-engineering/tests/
+frontend/src/**/*.test.*

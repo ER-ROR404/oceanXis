@@ -1,0 +1,9 @@
+# GitHub code ownership rules (mirrors root CODEOWNERS; GitHub-native)
+# Human review is enforced for the highest-sensitivity paths.
+
+/contracts/       @oceanembed/contracts
+/docs/02-architecture/ @oceanembed/architecture
+/database/        @oceanembed/backend
+/security/        @oceanembed/security
+/AGENTS.md        @oceanembed/governance
+/SYSTEM_MEMORY_DUMP.md @oceanembed/governance

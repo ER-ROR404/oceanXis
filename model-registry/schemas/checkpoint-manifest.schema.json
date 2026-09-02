@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/registry/checkpoint-manifest.schema.json",
+  "title": "CheckpointManifest (model-registry)",
+  "description": "Registry-side manifest for registered checkpoints. The authoritative field contract is contracts/ml/checkpoint-manifest.schema.json (RULE 6/20). Keep fields identical; resolve relative $refs via the contracts directory when validating.",
+  "type": "object",
+  "required": ["checkpoint_id", "model_name", "model_version", "artifact_uri", "sha256", "status"],
+  "properties": {
+    "checkpoint_id": { "type": "string" },
+    "model_name": { "type": "string", "const": "oceanembed-cnn" },
+    "model_version": { "type": "string" },
+    "artifact_uri": { "type": "string" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "status": { "type": "string", "enum": ["candidate", "validated", "approved", "deprecated"] },
+    "data_version": { "type": "string" },
+    "preprocessing_version": { "type": "string" },
+    "normalization_version": { "type": "string" },
+    "configuration_hash": { "type": "string" },
+    "evaluation": {
+      "type": "object",
+      "properties": {
+        "test_rmse": { "type": "number" },
+        "test_bias": { "type": "number" },
+        "test_correlation": { "type": "number" },
+        "evaluation_uri": { "type": "string" }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "approved_at": { "type": ["string", "null"], "format": "date-time" },
+    "notes": { "type": "string" }
+  }
+}

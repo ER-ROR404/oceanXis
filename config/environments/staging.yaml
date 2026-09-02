@@ -1,0 +1,24 @@
+# --- Staging environment (config/environments/staging.yaml) ---
+# Reference configuration. Secrets are injected from the secret manager / CI at runtime,
+# never stored here (RULE 14).
+
+environment: staging
+log_level: INFO
+api_prefix: /api
+backend:
+  host: 0.0.0.0
+  port: 8000
+database:
+  url: ""                                  # provided by infra (DATABASE_URL); managed Postgres target
+storage:
+  object_store: s3                         # S3-compatible bucket
+  bucket_ref: oceanembed-staging
+model:
+  path: ""                                 # resolved from model registry / artifact store
+  name: oceanembed-cnn
+copernicus:
+  credentials_source: secret_manager
+  verify_before_use: true
+observability:
+  prometheus: enabled
+  logging: structured

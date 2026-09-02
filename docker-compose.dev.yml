@@ -1,0 +1,24 @@
+# OceanEmbed — developer-oriented services: hot reload, volumes, debugging.
+# Extends docker-compose.yml for local development only.
+
+services:
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend/app:/app/app
+      - ./config:/app/config
+      - ./contracts:/app/contracts
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+    command: npm run dev
+    volumes:
+      - ../frontend/src:/app/src
+    ports:
+      - "5173:5173"
+
+  database:
+    ports:
+      - "5432:5432"

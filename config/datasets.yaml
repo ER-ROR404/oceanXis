@@ -1,0 +1,75 @@
+# --- Dataset configuration (config/datasets.yaml) ---
+# Source of truth: docs/04-data/data-sources.md + dataset-registry.md.
+#
+# IMPORTANT (RULE 7): Dataset IDs are candidate products only and MUST be verified via
+# copernicusmarine.describe() before any implementation use. Populate verified_at and the final
+# dataset_id after verification. Do NOT treat candidate IDs as authoritative.
+
+# Manifests directory (runtime), see .env.example DATASET_MANIFEST.
+manifests_dir: "data/manifests/"
+manifests_file: "datasets.json"
+schema: "contracts/data/dataset-metadata.schema.json"
+
+# Each logical variable maps to candidate product(s):
+#   - candidates:  {dataset_id, source, notes} — to be verified with describe()
+#   - selected:    null until verification chooses one
+#   - verified:    false until describe() succeeds and user confirms
+entries:
+  SST:
+    role: input
+    candidates:
+      - { dataset_id: "SST_GLO_SST_L4_NRT_OBSERVATIONS_010_001", source: copernicus_marine, note: "NRT candidate" }
+      - { dataset_id: "SST_GLO_SST_L4_REP_OBSERVATIONS_010_024", source: copernicus_marine, note: "REP candidate" }
+    selected: null
+    verified: false
+    verified_at: null
+
+  SSS:
+    role: input
+    candidates:
+      - { dataset_id: "MULTIOBS_GLO_PHY_SSS_L3_MYNRT_015_014", source: copernicus_marine, note: "NRT candidate" }
+    selected: null
+    verified: false
+    verified_at: null
+
+  SSH:
+    role: input
+    candidates:
+      - { dataset_id: "SEALEVEL_GLO_PHY_L4_NRT_008_046", source: copernicus_marine, note: "NRT candidate" }
+      - { dataset_id: "SEALEVEL_GLO_PHY_CLIMATE_L4_MY_008_057", source: copernicus_marine, note: "REP candidate" }
+    selected: null
+    verified: false
+    verified_at: null
+
+  current:
+    role: input
+    candidates:
+      - { dataset_id: "MULTIOBS_GLO_PHY_MYNRT_015_003", source: copernicus_marine, note: "multi-source; may include model-derived Ekman components — DISCLOSE, never 'pure satellite'" }
+    selected: null
+    verified: false
+    verified_at: null
+
+  wind:
+    role: input
+    candidates:
+      - { dataset_id: "WIND_GLO_PHY_L3_NRT_012_002", source: copernicus_marine, note: "NRT candidate" }
+      - { dataset_id: "WIND_GLO_PHY_L3_MY_012_005", source: copernicus_marine, note: "REP candidate" }
+    selected: null
+    verified: false
+    verified_at: null
+
+  glorys_temperature:
+    role: training_target
+    candidates:
+      - { dataset_id: "GLOBAL_MULTIYEAR_PHY_001_030", source: glorys, note: "GLORYS reanalysis family; must verify exact dataset_id + temperature variable name" }
+    selected: null
+    verified: false
+    verified_at: null
+
+  argo:
+    role: validation
+    candidates:
+      - { dataset_id: "argo_profiles", source: argo, note: "independent validation only (RULE 9); matched by date/location" }
+    selected: null
+    verified: false
+    verified_at: null

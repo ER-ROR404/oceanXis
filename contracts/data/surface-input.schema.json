@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/data/surface-input.schema.json",
+  "title": "SurfaceInput",
+  "description": "Canonical model input: the seven surface channels. Channel order is fixed (LOCKED): SST, SSS, SSH/SLA, current U, current V, wind U, wind V.",
+  "type": "object",
+  "required": ["channel_order", "shape", "dtype", "grid", "normalization", "mask"],
+  "properties": {
+    "channel_order": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["SST", "SSS", "SSH/SLA", "current_U", "current_V", "wind_U", "wind_V"] },
+      "minItems": 7,
+      "maxItems": 7
+    },
+    "shape": {
+      "type": "array",
+      "items": { "type": "integer" },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "[7, H, W]"
+    },
+    "dtype": { "const": "float32" },
+    "grid": {
+      "type": "object",
+      "required": ["spatial_resolution_degrees", "latitude", "longitude"],
+      "properties": {
+        "spatial_resolution_degrees": { "const": 0.25 },
+        "latitude": { "type": "array", "items": { "type": "number" } },
+        "longitude": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "normalization": {
+      "type": "object",
+      "description": "Train-only statistics applied per channel.",
+      "required": ["version", "mean_per_channel", "std_per_channel"],
+      "properties": {
+        "version": { "type": "string" },
+        "mean_per_channel": { "type": "array", "items": { "type": "number" }, "minItems": 7, "maxItems": 7 },
+        "std_per_channel": { "type": "array", "items": { "type": "number", "exclusiveMinimum": 0 }, "minItems": 7, "maxItems": 7 }
+      }
+    },
+    "mask": {
+      "type": "object",
+      "required": ["dtype", "description"],
+      "properties": {
+        "dtype": { "const": "bool" },
+        "description": { "type": "string" }
+      }
+    }
+  }
+}

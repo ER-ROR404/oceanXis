@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/api/prediction.schema.json",
+  "title": "PredictionEnvelope",
+  "description": "Prediction payload envelope for map/profile endpoints. Distinguishes model predictions, cached data, and unavailable channels. Never fabricates values.",
+  "type": "object",
+  "required": ["status", "payload", "metadata"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["model_prediction", "cached_data", "fallback_demo", "unavailable"]
+    },
+    "payload": {
+      "oneOf": [
+        { "$ref": "ocean-map.schema.json" },
+        { "$ref": "ocean-profile.schema.json" }
+      ]
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["model_version", "generated_at"],
+      "description": "generated_at is the wall-clock time of response creation.",
+      "properties": {
+        "model_version": { "type": "string" },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "channel_status": {
+          "type": "object",
+          "description": "Per-input-channel availability; missing/failed channels are reported, never zero-filled.",
+          "additionalProperties": { "type": "string", "enum": ["available", "missing", "cached"] }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/api/health.schema.json",
+  "title": "HealthResponse",
+  "description": "Response payload for GET /api/health. Liveness probe; must never trigger expensive external downloads.",
+  "type": "object",
+  "required": ["status", "checks", "timestamp"],
+  "properties": {
+    "status": { "type": "string", "enum": ["ok", "degraded", "down"] },
+    "checks": {
+      "type": "object",
+      "required": ["api", "model_loaded", "cache_accessible", "database"],
+      "properties": {
+        "api": { "$ref": "#/definitions/check" },
+        "model_loaded": { "$ref": "#/definitions/check" },
+        "cache_accessible": { "$ref": "#/definitions/check" },
+        "database": { "$ref": "#/definitions/check" }
+      }
+    },
+    "timestamp": { "type": "string", "format": "date-time" }
+  },
+  "definitions": {
+    "check": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "degraded"] },
+        "detail": { "type": "string", "description": "Human-readable, credential-free detail." }
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/ml/model-output.schema.json",
+  "title": "ModelOutput",
+  "description": "Model output: temperature at 15 canonical depths [B,15,H,W]. Values denormalized to degC before serving. NaN only in masked cells.",
+  "type": "object",
+  "required": ["Y", "depth_order", "dtype", "mask", "metadata"],
+  "properties": {
+    "Y": {
+      "type": "object",
+      "required": ["shape", "dtype", "values"],
+      "properties": {
+        "shape": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+        "dtype": { "const": "float32" },
+        "values": { "type": "array", "description": "[B,15,H,W] temperature (degC) with NaN only on masked cells." }
+      }
+    },
+    "depth_order": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 15,
+      "maxItems": 15,
+      "description": "[0,5,10,20,30,50,75,100,125,150,200,300,500,700,1000] (LOCKED ordering)."
+    },
+    "dtype": { "const": "float32" },
+    "mask": { "type": "array", "items": { "type": "boolean" }, "description": "[H,W] validity mask applied to output. Optional when data mask is known." },
+    "metadata": {
+      "type": "object",
+      "required": ["model_version", "inference_runtime_ms"],
+      "properties": {
+        "model_version": { "type": "string" },
+        "inference_runtime_ms": { "type": "number" }
+      }
+    }
+  }
+}

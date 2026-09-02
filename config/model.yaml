@@ -1,0 +1,43 @@
+# --- Model architecture parameters (config/model.yaml) ---
+# Source of truth: docs/05-ml/model-architecture.md + feature-specification.md.
+# The CNN encoder-decoder below is a PROPOSED baseline, NOT a locked requirement (§17).
+
+model_name: oceanembed-cnn
+version: 0.1.0
+
+# Tensor contract (LOCKED shapes — see contracts/ml/model-input/output.schema.json).
+input:
+  channels: 7
+  dtype: float32
+output:
+  channels: 15
+  dtype: float32
+  depth_order_ref: "config/depths.yaml"
+uncertainty:
+  enabled: false          # Gaussian heteroscedastic head is a differentiation, post-baseline (§21, §25)
+  variance_min: 0.0
+
+architecture:            # PROPOSED baseline encoder-decoder (experimental values, §148)
+  type: cnn_encoder_decoder
+  encoder:
+    conv_channels: [32, 64, 128]
+    kernel_size: 3
+    padding: 1
+    activation: relu
+    use_batchnorm: true
+  decoder:
+    conv_channels: [128, 64, 32]
+    output_channels: 15
+    kernel_size: 3
+    padding: 1
+    activation: relu
+  variant: plain        # optional: unet (skip connections) post-baseline
+  depth_conditioning: false
+
+baselines:               # comparison targets (docs/05-ml/evaluation-policy.md)
+  enabled: true
+  candidates: [climatology, persistence]
+
+inference:
+  runtime: cpu_or_gpu
+  min_dependencies: true   # inference image excludes training stack (RULE 3, dependency isolation)

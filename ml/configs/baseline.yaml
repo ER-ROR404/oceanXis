@@ -1,0 +1,34 @@
+# --- Baseline experiment (ml/configs/baseline.yaml) ---
+# Smallest meaningful model for establishing a baseline before optimizing (Golden Rule 12).
+# Fine to run locally. See docs/05-ml/model-architecture.md + training-policy.md.
+
+experiment:
+  name: baseline
+  status: proposed
+
+model:
+  architecture: cnn_encoder_decoder
+  uncertainty: false
+
+data:
+  split_method: temporal_locked       # RULE 10
+  normalization_source: training_only # RULE 11
+  batch_size: 8
+
+training:
+  loss: masked_mse
+  optimizer: adam
+  lr: 0.001
+  epochs: 20
+  seed: 42
+  early_stopping_patience: 5
+
+evaluation:
+  metrics: [rmse, bias, correlation]
+  depth_wise: true
+  argo_validation: true               # RULE 9
+  baseline_comparison: [climatology]
+
+artifacts:
+  register: true
+  manifest_schema: contracts/ml/checkpoint-manifest.schema.json

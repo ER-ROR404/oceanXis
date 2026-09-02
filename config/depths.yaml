@@ -1,0 +1,27 @@
+# --- Canonical output depths (config/depths.yaml) ---
+# Source of truth: docs/03-domain/depth-levels.md, SYSTEM_MEMORY_DUMP.md §15, §116.
+# LOCKED ordering. Do NOT reorder (RULE 20, Golden Rule 18).
+
+output_depths_m:
+  - 0
+  - 5
+  - 10
+  - 20
+  - 30
+  - 50
+  - 75
+  - 100
+  - 125
+  - 150
+  - 200
+  - 300
+  - 500
+  - 700
+  - 1000
+
+output_channels: 15
+
+# Interpolation of source vertical levels onto these standard depths:
+interpolation:
+  method: linear_in_depth
+  note: "Applied in preprocessing; method recorded in provenance."

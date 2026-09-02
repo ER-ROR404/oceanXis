@@ -1,0 +1,59 @@
+# --- Training defaults (config/training.yaml) ---
+# Source of truth: docs/05-ml/training-policy.md + experiment-tracking.md.
+# Defaults; experiments may override via ml/configs/<experiment>.yaml.
+
+split:
+  method: temporal_locked        # NO random temporal split (RULE 10, Golden Rule 7)
+  train_ratio: 0.8
+  validation_ratio: 0.1
+  test_ratio: 0.1
+  exact_years: null              # chosen only after coverage-overlap verification (§126)
+  test_untouched_during_tuning: true
+
+normalization:
+  statistics_source: training_only   # RULE 11
+  method: zscore                     # (x - mean) / std per channel
+  inverse_applied_before_serving: true
+
+loss:
+  primary: masked_mse
+  alternatives_enabled: false        # huber, depth_weighted, physics_regularization, uncertainty_nll
+
+optimizer:
+  name: adam
+  lr: 0.001
+  weight_decay: 0.0
+
+scheduler:
+  name: reduce_on_plateau
+  patience: 5
+  factor: 0.5
+
+training:
+  epochs: 100
+  batch_size: 8
+  gradient_clip_norm: 1.0
+  shuffle_train: true
+  deterministic: true               # seed pinning via reproducibility.py
+  early_stopping:
+    enabled: true
+    patience: 15
+    monitor: validation_masked_rmse
+
+checkpoint:
+  policy: "docs/05-ml/checkpoint-policy.md"
+  manifest_schema: "contracts/ml/checkpoint-manifest.schema.json"
+  artifact_store: "model-registry/models/<model_name>/"
+  keep_best_only: true
+
+evaluation:
+  metrics: [rmse, bias, correlation]
+  depth_wise: true
+  spatial_metrics: true
+  argo_validation: true             # RULE 9
+  baseline_comparison: true
+
+reproducibility:
+  seed: 42
+  log_config: true
+  record_manifest: true

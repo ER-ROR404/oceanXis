@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/api/ocean-profile.schema.json",
+  "title": "OceanProfileResponse",
+  "description": "Response payload for GET /api/ocean/profile — temperature at a single grid cell across all 15 canonical depths.",
+  "type": "object",
+  "required": ["region", "date", "lat", "lon", "depths", "temperatures", "metadata"],
+  "properties": {
+    "region": { "$ref": "#/definitions/region" },
+    "date": { "type": "string", "format": "date" },
+    "lat": { "type": "number", "description": "Grid-cell center latitude (degN)." },
+    "lon": { "type": "number", "description": "Grid-cell center longitude (same convention as coordinates metadata)." },
+    "depths": {
+      "type": "array",
+      "items": { "type": "number" },
+      "description": "Canonical depth order, meters: [0,5,10,20,30,50,75,100,125,150,200,300,500,700,1000].",
+      "minItems": 15,
+      "maxItems": 15
+    },
+    "temperatures": {
+      "type": "array",
+      "items": { "type": ["number", "null"] },
+      "description": "Temperature at each depth in degC. null when the cell/masked depth is unavailable (never fabricated).",
+      "minItems": 15,
+      "maxItems": 15
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["model_version", "data_source", "preprocessing_version", "cached", "timestamp"],
+      "properties": {
+        "model_version": { "type": "string" },
+        "data_source": { "type": "string" },
+        "preprocessing_version": { "type": "string" },
+        "cached": { "type": "boolean" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "definitions": {
+    "region": {
+      "type": "string",
+      "enum": ["bay_of_bengal", "arabian_sea", "north_indian_ocean"]
+    }
+  }
+}

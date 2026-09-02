@@ -1,0 +1,36 @@
+[project]
+name = "oceanembed-ml"
+version = "0.1.0"
+description = "OceanEmbed ML training and inference (PyTorch)."
+readme = "README.md"
+requires-python = ">=3.11"
+
+# ML environment (AGENTS.md environment isolation).
+# PyTorch + CUDA-compatible deps + scientific stack + training utilities.
+# Kept separate from the backend so the application never installs a training stack.
+
+dependencies = [
+    "torch>=2.2",
+    "numpy>=1.26",
+    "xarray>=2024.1",
+    "netcdf4>=1.6",
+    "zarr>=2.17",
+    "pyyaml>=6.0",
+    "scipy>=1.12",
+    "scikit-learn>=1.4",
+    "pandas>=2.2",
+    "dask[array]>=2024.1",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+gpu = ["torch>=2.2+cu121"]  # install CUDA build via torch index; see docs/07-operations/training-operations.md
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["oceanembed*"]

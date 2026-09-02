@@ -1,0 +1,11 @@
+# --- Model registry (model-registry/registry.yaml) ---
+# Approved model versions and their immutable artifact locations.
+# Checkpoints are stored in object storage/MLflow, NOT in Git (RULE 13).
+
+schema_version: 1
+models:
+  - name: oceanembed-cnn
+    approved_versions: []   # list of { version, checkpoint_id, artifact_uri, sha256, trained_on, evaluation }
+    active_version: null
+    rollback_versions: []
+# Populated during the ML coding phase (see docs/05-ml/checkpoint-policy.md).

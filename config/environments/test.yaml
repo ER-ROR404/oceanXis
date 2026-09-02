@@ -1,0 +1,24 @@
+# --- Test environment (config/environments/test.yaml) ---
+# Isolated test configuration. No live Copernicus calls; synthetic fixtures under tests/fixtures/.
+
+environment: test
+log_level: WARNING
+api_prefix: /api
+backend:
+  host: 127.0.0.1
+  port: 8001
+database:
+  url: sqlite:///./data/test_oceanembed.db   # replaced by tmp_path in tests / test containers
+storage:
+  object_store: local
+  data_root: ./data
+  caches:
+    copernicus: disabled                    # tests must not hit live services
+model:
+  path: ./model-registry/models
+  name: oceanembed-cnn
+copernicus:
+  credentials_source: env
+  verify_before_use: false                  # tests use synthetic fixtures / mocks
+tests:
+  fixtures_dir: ./tests/fixtures

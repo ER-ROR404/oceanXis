@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/ml/model-input.schema.json",
+  "title": "ModelInput",
+  "description": "Canonical ML inference input: normalized 7-channel surface tensor plus metadata. Hard contract — inference consumes exactly this (RULE 5).",
+  "type": "object",
+  "required": ["X", "channel_order", "grid", "normalization_version", "metadata"],
+  "properties": {
+    "X": {
+      "type": "object",
+      "required": ["shape", "dtype", "values"],
+      "properties": {
+        "shape": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+        "dtype": { "const": "float32" },
+        "values": { "type": "array", "description": "Normalized [7, H, W] floats." }
+      }
+    },
+    "channel_order": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 7,
+      "maxItems": 7,
+      "description": "SST, SSS, SSH/SLA, current_U, current_V, wind_U, wind_V (LOCKED ordering)."
+    },
+    "grid": {
+      "type": "object",
+      "required": ["spatial_resolution_degrees", "latitude", "longitude"],
+      "properties": {
+        "spatial_resolution_degrees": { "const": 0.25 },
+        "latitude": { "type": "array", "items": { "type": "number" } },
+        "longitude": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "normalization_version": { "type": "string", "description": "Must equal the checkpoint's stored normalization version." },
+    "metadata": { "type": "object", "additionalProperties": true }
+  }
+}

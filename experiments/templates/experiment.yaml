@@ -1,0 +1,43 @@
+# --- Standard experiment template (experiments/templates/experiment.yaml) ---
+# Copy to experiments/<run>/<experiment_id>.yaml and fill in. See docs/05-ml/experiment-tracking.md.
+
+experiment:
+  id: ""                      # e.g. exp-2024-001
+  name: ""                    # short slug
+  status: proposed            # proposed | running | completed | aborted
+  date: ""                    # YYYY-MM-DD
+  branch: ""
+
+model:
+  architecture: cnn_encoder_decoder   # matches config/model.yaml architecture
+  config_hash: ""                     # hash of resolved config
+  uncertainty: false
+
+data:
+  dataset_manifest: ""                # exact manifest used
+  train_period: []                    # [start, end] dates
+  validation_period: []
+  test_period: []
+  split_method: temporal_locked       # RULE 10
+  preprocessing_version: ""
+  normalization_version: ""           # train-only stats, RULE 11
+
+training:
+  loss: masked_mse
+  optimizer: adam
+  lr: 0.001
+  epochs: 100
+  seed: 42
+  hardware: cpu
+
+evaluation:
+  overall: { rmse: null, bias: null, correlation: null }
+  depth_wise: { uri: null }           # artifacts/reports/depth_metrics.json
+  argo_validation: { n_profiles: null, rmse: null }   # RULE 9, never fabricated
+  baseline_comparison: null
+  report_uri: ""
+
+artifacts:
+  checkpoint_id: ""                   # references model-registry
+  checkpoint_manifest: ""
+  logs: ""

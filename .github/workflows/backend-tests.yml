@@ -1,0 +1,46 @@
+name: Backend tests
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "contracts/api/**"
+      - ".github/workflows/backend-tests.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "contracts/api/**"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: oceanembed_test
+          POSTGRES_PASSWORD: oceanembed_test
+          POSTGRES_DB: oceanembed_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oceanembed_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install backend
+        run: pip install -e ./backend
+      - name: Ruff
+        run: ruff check backend
+      - name: Unit + integration + API tests
+        env:
+          DATABASE_URL: postgresql+psycopg://oceanembed_test:oceanembed_test@localhost:5432/oceanembed_test
+        run: pytest backend/tests -q
+      - name: Coverage gate
+        run: pytest backend/tests --cov=app --cov-report=term-missing --cov-fail-under=80

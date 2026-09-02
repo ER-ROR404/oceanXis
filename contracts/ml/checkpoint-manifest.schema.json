@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/ml/checkpoint-manifest.schema.json",
+  "title": "CheckpointManifest",
+  "description": "Metadata required for a reproducible model checkpoint. An approved checkpoint is reproducible (artifact_uri + sha256 + dataset + preprocessing + normalization + config hashes), never just an unmanaged final_model.pt (RULE 13).",
+  "type": "object",
+  "required": [
+    "checkpoint_id",
+    "model_name",
+    "model_version",
+    "architecture",
+    "artifact_uri",
+    "sha256",
+    "dataset_manifest",
+    "preprocessing_version",
+    "normalization_version",
+    "configuration_hash",
+    "created_at"
+  ],
+  "properties": {
+    "checkpoint_id": { "type": "string", "description": "Unique immutable identifier, e.g. oceanembed-cnn-v1.0.0-<sha-prefix>." },
+    "model_name": { "type": "string", "const": "oceanembed-cnn" },
+    "model_version": { "type": "string", "description": "Semver of the model artifact." },
+    "architecture": { "type": "string", "description": "Architecture/config name (matches an entry in config/model.yaml)." },
+    "artifact_uri": { "type": "string", "description": "Location in object storage / model registry (never in Git)." },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Content hash of the checkpoint artifact." },
+    "dataset_manifest": { "type": "string", "description": "Reference to the exact dataset manifest used for training." },
+    "preprocessing_version": { "type": "string", "description": "Version of the preprocessing pipeline that produced training inputs." },
+    "normalization_version": { "type": "string", "description": "Version of the normalization statistics applied to inputs (RULE 11)." },
+    "configuration_hash": { "type": "string", "description": "Hash of the resolved training/model configuration." },
+    "trained_on": { "type": "string", "format": "date", "description": "End date of the training data period, not a claim of realtime capability." },
+    "evaluation": {
+      "type": "object",
+      "required": ["test_rmse", "test_bias", "test_correlation"],
+      "properties": {
+        "test_rmse": { "type": "number" },
+        "test_bias": { "type": "number" },
+        "test_correlation": { "type": "number" },
+        "depth_metrics_uri": { "type": "string", "description": "Reference to depth-wise evaluation artifact." }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "notes": { "type": "string" }
+  }
+}

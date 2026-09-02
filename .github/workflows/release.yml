@@ -1,0 +1,25 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version tag
+        run: |
+          TAG="${{ github.ref_name }}"
+          echo "${TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: true
+      - name: Notify release candidate
+        run: echo "Release candidate ${{ github.ref_name }} created (draft). Promote after staging validation."

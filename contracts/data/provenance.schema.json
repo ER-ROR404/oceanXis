@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/data/provenance.schema.json",
+  "title": "DataProvenance",
+  "description": "Lineage record per processed dataset/sample. Preserved end-to-end (Golden Rule 16). Dataset IDs recorded only after describe() verification.",
+  "type": "object",
+  "required": ["source_provider", "product_id", "dataset_id", "variable", "interpolation_method", "unit_conversion", "normalization_version", "preprocessing_version"],
+  "properties": {
+    "source_provider": { "type": "string", "enum": ["copernicus_marine", "glorys", "argo", "other"] },
+    "product_id": { "type": "string" },
+    "dataset_id": { "type": "string", "description": "Must match a verified registry entry." },
+    "dataset_version": { "type": "string" },
+    "variable": { "type": "string" },
+    "source_resolution": { "type": "string" },
+    "target_resolution": { "type": "string", "description": "0.25 deg default." },
+    "source_time": { "type": "string" },
+    "target_time": { "type": "string" },
+    "interpolation_method": { "type": "string", "enum": ["bilinear", "nearest_neighbor", "none"] },
+    "unit_conversion": { "type": ["string", "null"], "description": "Null when no conversion applied." },
+    "normalization_version": { "type": "string" },
+    "preprocessing_version": { "type": "string" },
+    "notes": { "type": "string" },
+    "verified_at": { "type": "string", "format": "date-time" }
+  }
+}

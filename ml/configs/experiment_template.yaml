@@ -1,0 +1,42 @@
+# --- Reproducible experiment template (ml/configs/experiment_template.yaml) ---
+# Copy to create a new experiment. Fill in fields; register in experiments/registry.yaml.
+
+experiment:
+  name: ""
+  status: proposed
+
+model:
+  architecture: cnn_encoder_decoder
+  variant: plain          # plain | unet | attention (post-baseline)
+  encoder_channels: [32, 64, 128]
+  decoder_channels: [128, 64, 32]
+  uncertainty: false
+  loss: masked_mse        # masked_mse | huber | depth_weighted | physics_regularization | uncertainty_nll
+
+data:
+  dataset_manifest: ""
+  split_method: temporal_locked   # NEVER random (RULE 10)
+  train_period: []
+  validation_period: []
+  test_period: []
+  normalization_source: training_only
+  batch_size: 8
+
+training:
+  optimizer: adam
+  lr: 0.001
+  epochs: 100
+  seed: 42
+  hardware: cpu           # cpu | gpu (cloud-training for gpu)
+  deterministic: true
+
+evaluation:
+  metrics: [rmse, bias, correlation]
+  depth_wise: true
+  spatial_metrics: false
+  argo_validation: true
+  baseline_comparison: [climatology]
+
+artifacts:
+  register: true
+  manifest_schema: contracts/ml/checkpoint-manifest.schema.json

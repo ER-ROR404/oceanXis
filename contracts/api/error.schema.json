@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/api/error.schema.json",
+  "title": "ErrorResponse",
+  "description": "Standardized error envelope. Codes are stable machine identifiers; messages are safe for the frontend. Never leaks credentials or internal dataset details.",
+  "type": "object",
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "INVALID_REGION",
+            "INVALID_DATE",
+            "INVALID_DEPTH",
+            "INVALID_COORDINATE",
+            "DATA_NOT_AVAILABLE",
+            "CHANNEL_UNAVAILABLE",
+            "MODEL_NOT_LOADED",
+            "INFERENCE_FAILED",
+            "UNKNOWN_ERROR"
+          ]
+        },
+        "message": { "type": "string" },
+        "details": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

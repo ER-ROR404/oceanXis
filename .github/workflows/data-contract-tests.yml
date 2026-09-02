@@ -1,0 +1,52 @@
+name: Data contract tests
+
+on:
+  push:
+    paths:
+      - "contracts/**"
+      - "config/**"
+      - "data-engineering/**"
+      - ".github/workflows/data-contract-tests.yml"
+  pull_request:
+    paths:
+      - "contracts/**"
+      - "config/**"
+      - "data-engineering/**"
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install contract tooling
+        run: pip install jsonschema PyYAML
+      - name: Verify contracts against config
+        run: python scripts/verify-contracts.py
+      - name: Validate JSON schemas are well-formed
+        run: |
+          python - <<'EOF'
+          import json, glob
+          for f in glob.glob("contracts/**/*.schema.json", recursive=True):
+              json.load(open(f))
+              print("OK:", f)
+          import yaml
+          yaml.safe_load(open("contracts/api/openapi.yaml"))
+          print("OK: contracts/api/openapi.yaml")
+          EOF
+      - name: Synthetic fixture integrity tests
+        run: pytest tests/fixtures -q
+
+  data-engineering:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install data-engineering
+        run: pip install -e ./data-engineering
+      - name: Run data-engineering tests (offline — describe() proof is manual/managed)
+        run: pytest data-engineering/tests -q

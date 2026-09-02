@@ -1,0 +1,37 @@
+# --- CNN v1 experiment (ml/configs/cnn_v1.yaml) ---
+# First OceanEmbed CNN encoder-decoder experiment matching config/model.yaml.
+
+experiment:
+  name: cnn_v1
+  status: proposed
+
+model:
+  architecture: cnn_encoder_decoder
+  variant: plain
+  encoder_channels: [32, 64, 128]
+  decoder_channels: [128, 64, 32]
+  uncertainty: false
+
+data:
+  split_method: temporal_locked
+  normalization_source: training_only
+  batch_size: 16
+
+training:
+  loss: masked_mse
+  optimizer: adam
+  lr: 0.001
+  epochs: 100
+  seed: 42
+  early_stopping_patience: 15
+
+evaluation:
+  metrics: [rmse, bias, correlation]
+  depth_wise: true
+  spatial_metrics: true
+  argo_validation: true
+  baseline_comparison: [climatology, persistence]
+
+artifacts:
+  register: true
+  manifest_schema: contracts/ml/checkpoint-manifest.schema.json

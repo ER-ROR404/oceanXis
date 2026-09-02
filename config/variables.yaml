@@ -1,0 +1,52 @@
+# --- Canonical input variables and channel ordering (config/variables.yaml) ---
+# Source of truth: docs/03-domain/variables.md, SYSTEM_MEMORY_DUMP.md §3, §13, §115.
+# LOCKED channel ordering (7 surface channels). Do NOT reorder (RULE 20, Golden Rule 17).
+
+channels:
+  - key: SST
+    index: 0
+    long_name: Sea Surface Temperature
+    units: "degC"
+    role: input
+  - key: SSS
+    index: 1
+    long_name: Sea Surface Salinity
+    units: "PSU"
+    role: input
+  - key: "SSH/SLA"
+    index: 2
+    long_name: Sea Surface Height / Sea Level Anomaly
+    units: "m"
+    role: input
+  - key: current_U
+    index: 3
+    long_name: Current Zonal Component
+    units: "m/s"
+    role: input
+  - key: current_V
+    index: 4
+    long_name: Current Meridional Component
+    units: "m/s"
+    role: input
+  - key: wind_U
+    index: 5
+    long_name: Wind Zonal Component
+    units: "m/s"
+    role: input
+  - key: wind_V
+    index: 6
+    long_name: Wind Meridional Component
+    units: "m/s"
+    role: input
+
+input_channels: 7
+
+output_channels: 15  # temperature at canonical depths (see depths.yaml)
+
+# GLORYS subsurface temperature is the training/reference target, NEVER an inference input (RULE 8).
+# ARGO is independent validation data only (RULE 9).
+
+# Optional derived features (NOT MVP; see SYSTEM_MEMORY_DUMP.md §101).
+derived_features:
+  enabled: false
+  candidates: [sst_gradient, ssh_gradient, wind_magnitude, current_magnitude, climatological_anomaly]

@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/ml/evaluation-result.schema.json",
+  "title": "EvaluationResult",
+  "description": "Standardized model evaluation output. Metrics: RMSE, bias, correlation; reported overall and depth-wise across the 15 canonical depths; optional spatial and ARGO-independent validation. Never invent values; every claim must be traceable (Golden Rule 21).",
+  "type": "object",
+  "required": ["model_version", "checkpoint_id", "evaluation_dataset", "overall", "depth_wise", "created_at"],
+  "properties": {
+    "model_version": { "type": "string" },
+    "checkpoint_id": { "type": "string", "description": "Must match a checkpoint manifest." },
+    "evaluation_dataset": { "type": "string", "description": "Name/version of the held-out evaluation dataset." },
+    "overall": {
+      "type": "object",
+      "required": ["rmse", "bias", "correlation"],
+      "properties": {
+        "rmse": { "type": "number", "description": "DegC." },
+        "bias": { "type": "number", "description": "DegC (prediction minus reference)." },
+        "correlation": { "type": "number", "minimum": -1, "maximum": 1 }
+      }
+    },
+    "depth_wise": {
+      "type": "array",
+      "minItems": 15,
+      "maxItems": 15,
+      "items": {
+        "type": "object",
+        "required": ["depth", "rmse", "bias", "correlation"],
+        "properties": {
+          "depth": {
+            "type": "number",
+            "enum": [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000]
+          },
+          "rmse": { "type": "number" },
+          "bias": { "type": "number" },
+          "correlation": { "type": "number" },
+          "n": { "type": "integer", "description": "Number of samples in the metric." }
+        }
+      }
+    },
+    "spatial": {
+      "type": "object",
+      "description": "Optional spatial error statistics.",
+      "properties": {
+        "rmse_map_uri": { "type": "string" },
+        "mean_rmse": { "type": "number" },
+        "notes": { "type": "string" }
+      }
+    },
+    "argo_validation": {
+      "type": "object",
+      "description": "Independent ARGO validation (RULE 9).",
+      "required": ["n_profiles"],
+      "properties": {
+        "n_profiles": { "type": "integer" },
+        "rmse": { "type": "number" },
+        "bias": { "type": "number" },
+        "correlation": { "type": "number" },
+        "notes": { "type": "string", "description": "Must not be invented; only populated after real ARGO matching." }
+      }
+    },
+    "baseline_comparison": {
+      "type": "object",
+      "description": "Optional comparison against baselines (climatology, persistence).",
+      "properties": {
+        "baseline": { "type": "string" },
+        "rmse": { "type": "number" },
+        "notes": { "type": "string" }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}

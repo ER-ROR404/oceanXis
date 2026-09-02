@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ModelManifest",
+  "description": "Record of an approved model version in the model registry. Companion to contracts/ml/checkpoint-manifest.schema.json; checkpoints always reference this.",
+  "type": "object",
+  "required": ["name", "version", "checkpoint_id", "artifact_uri", "sha256", "status", "approved_at"],
+  "properties": {
+    "name": { "type": "string", "const": "oceanembed-cnn" },
+    "version": { "type": "string" },
+    "checkpoint_id": { "type": "string" },
+    "artifact_uri": { "type": "string" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "status": { "type": "string", "enum": ["candidate", "approved", "deprecated", "rolled_back"] },
+    "data_version": { "type": "string" },
+    "normalization_version": { "type": "string" },
+    "evaluation_uri": { "type": "string" },
+    "approved_at": { "type": "string", "format": "date-time" }
+  }
+}

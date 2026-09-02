@@ -1,0 +1,6 @@
+# --- Experiment registry (experiments/registry.yaml) ---
+# Machine-readable record of experiments. See docs/05-ml/experiment-tracking.md.
+# Populated during the ML coding phase. Every entry references a template config + results.
+
+schema_version: 1
+experiments: []   # list of { id, name, status, config_uri, checkpoint_id, report_uri }

@@ -1,0 +1,20 @@
+# --- Local development environment (config/environments/local.yaml) ---
+# Safe defaults for a developer workstation. Actual secrets stay in the environment / .env.
+
+environment: local
+log_level: INFO
+api_prefix: /api
+backend:
+  host: 0.0.0.0
+  port: 8000
+database:
+  url: sqlite:///./data/oceanembed.db   # local default; override via DATABASE_URL
+storage:
+  object_store: local                    # local filesystem under DATA_ROOT
+  data_root: ./data
+model:
+  path: ./model-registry/models
+  name: oceanembed-cnn
+copernicus:
+  credentials_source: env                # COPERNICUSMARINE_SERVICE_USERNAME/PASSWORD
+  verify_before_use: true

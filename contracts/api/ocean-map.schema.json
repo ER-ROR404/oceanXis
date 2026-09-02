@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/api/ocean-map.schema.json",
+  "title": "OceanMapResponse",
+  "description": "Response payload for GET /api/ocean/map — gridded field at a region/date/depth. Values are temperature in degC (denormalized).",
+  "type": "object",
+  "required": ["region", "date", "coordinates", "channel", "values", "metadata"],
+  "properties": {
+    "region": { "$ref": "#/definitions/region" },
+    "date": { "type": "string", "format": "date" },
+    "coordinates": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": { "$ref": "#/definitions/lat_grid" },
+        "longitude": { "$ref": "#/definitions/lon_grid" }
+      }
+    },
+    "channel": {
+      "description": "Requested variable. temperature uses the canonical depth ordering.",
+      "type": "string",
+      "enum": ["temperature"]
+    },
+    "depth": {
+      "description": "Depth in meters; one of the 15 canonical depths for temperature.",
+      "type": "number",
+      "enum": [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000]
+    },
+    "values": {
+      "description": "2D float array [lat, lon] of temperature at the requested depth; NaN on masked/invalid cells.",
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Provenance and model metadata. Never includes credentials.",
+      "required": ["model_version", "data_source", "preprocessing_version", "cached", "timestamp"],
+      "properties": {
+        "model_version": { "type": "string" },
+        "data_source": { "type": "string" },
+        "preprocessing_version": { "type": "string" },
+        "cached": { "type": "boolean" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "definitions": {
+    "region": {
+      "type": "string",
+      "enum": ["bay_of_bengal", "arabian_sea", "north_indian_ocean"]
+    },
+    "lat_grid": {
+      "type": "array",
+      "items": { "type": "number" },
+      "description": "Ascending latitude centers matching regridded 0.25deg cells."
+    },
+    "lon_grid": {
+      "type": "array",
+      "items": { "type": "number" },
+      "description": "Longitude centers for the chosen region (single documented convention)."
+    }
+  }
+}

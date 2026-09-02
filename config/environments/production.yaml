@@ -1,0 +1,27 @@
+# --- Production environment (config/environments/production.yaml) ---
+# Reference configuration only. No secrets. Credentials/keys injected at deploy time.
+
+environment: production
+log_level: WARNING
+api_prefix: /api
+backend:
+  host: 0.0.0.0
+  port: 8000
+database:
+  url: ""                                  # managed Postgres (DATABASE_URL from secret manager)
+storage:
+  object_store: s3
+  bucket_ref: oceanembed-production
+model:
+  path: ""                                 # resolved from model registry / artifact store
+  name: oceanembed-cnn
+copernicus:
+  credentials_source: secret_manager
+  verify_before_use: true
+rate_limit:
+  enabled: true
+  requests_per_minute: 300
+observability:
+  prometheus: enabled
+  logging: structured
+  tracing: enabled

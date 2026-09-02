@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/data/dataset-metadata.schema.json",
+  "title": "DatasetMetadata",
+  "description": "Verified dataset/product metadata record. Populated only after copernicusmarine describe() verification (RULE 7). Empty or unverified entries are excluded or explicitly marked UNVERIFIED.",
+  "type": "object",
+  "required": ["product_id", "dataset_id", "variable", "source", "coverage", "verified_at"],
+  "properties": {
+    "product_id": { "type": "string", "description": "Producer product identifier." },
+    "dataset_id": { "type": "string", "description": "Callable dataset_id for the Copernicus Marine Toolbox." },
+    "variable": { "type": "string", "enum": ["SST", "SSS", "SSH/SLA", "current_U", "current_V", "wind_U", "wind_V", "GLORYS_temperature", "ARGO_profile"] },
+    "source": { "type": "string", "enum": ["copernicus_marine", "glorys", "argo", "other"] },
+    "spatial_resolution": { "type": ["number", "string"] },
+    "temporal_frequency": { "type": "string" },
+    "coverage": {
+      "type": "object",
+      "required": ["start", "end", "lat_min", "lat_max", "lon_min", "lon_max"],
+      "properties": {
+        "start": { "type": "string", "format": "date" },
+        "end": { "type": ["string", "null"], "format": "date", "description": "null for operational/NRT." },
+        "lat_min": { "type": "number" },
+        "lat_max": { "type": "number" },
+        "lon_min": { "type": "number" },
+        "lon_max": { "type": "number" }
+      }
+    },
+    "latency": { "type": ["string", "null"], "description": "Approx delay between observation and availability; null when unverified." },
+    "units": { "type": "string" },
+    "notes": { "type": "string", "description": "E.g. multi-source product includes model-derived components; disclose." },
+    "verified_at": { "type": "string", "format": "date-time" }
+  }
+}

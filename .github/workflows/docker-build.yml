@@ -1,0 +1,48 @@
+name: Docker build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "infrastructure/docker/**"
+      - "backend/Dockerfile"
+      - "ml/Dockerfile.*"
+      - "frontend/Dockerfile"
+      - "docker-compose*.yml"
+
+jobs:
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -f infrastructure/docker/backend.Dockerfile -t oceanembed-backend .
+
+  build-ml-inference:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ML inference image
+        run: docker build -f infrastructure/docker/ml-inference.Dockerfile -t oceanembed-ml-inference .
+
+  build-ml-training:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ML training image
+        run: docker build -f ml/Dockerfile.training -t oceanembed-ml-training ml
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build frontend image
+        run: docker build -f infrastructure/docker/frontend.Dockerfile -t oceanembed-frontend frontend
+
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose files
+        run: docker compose config -q

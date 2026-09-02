@@ -1,0 +1,38 @@
+# --- Canonical application regions (config/regions.yaml) ---
+# Source of truth: docs/03-domain/regions.md, SYSTEM_MEMORY_DUMP.md §11-§12.
+# LOCKED official domain + application-level MVP regions.
+# Backend maps region=<id> -> bounds here (validated at load).
+
+grid:
+  spatial_resolution_degrees: 0.25
+  temporal_frequency: daily
+  grid_type: regular_lat_lon
+
+official_domain:
+  id: north_indian_ocean
+  longitude:
+    min: 45.0
+    max: 105.0
+  latitude:
+    min: 5.0
+    max: 30.0
+  description: "Official full domain (LOCKED)."
+
+regions:
+  bay_of_bengal:
+    longitude:
+      min: 80.0
+      max: 100.0
+    latitude:
+      min: 5.0
+      max: 22.0
+  arabian_sea:
+    longitude:
+      min: 45.0
+      max: 75.0
+    latitude:
+      min: 5.0
+      max: 25.0
+
+# Both application regions use the SAME Copernicus access mechanism.
+# MVP scope is bay_of_bengal + arabian_sea (docs/02-architecture/architecture-decisions/ADR-008-regional-mvp.md).

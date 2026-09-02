@@ -1,0 +1,94 @@
+# --- OceanEmbed .gitignore ---
+# Prevent credentials, local environments, datasets, checkpoints, caches,
+# and generated files from entering version control.
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Raw / processed data (RULE 12: large datasets never committed)
+data/raw/
+data/processed/
+data/cache/
+
+# Ocean data / model file formats
+*.nc
+*.nc4
+*.cdf
+*.h5
+*.hdf5
+*.zarr
+*.tif
+
+# Model checkpoints / weights (RULE 13: never committed)
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+*.bin
+*.joblib
+
+# Model / experiment tracking artifacts
+mlruns/
+wandb/
+outputs/
+artifacts/
+checkpoints/
+experiments/reports/*
+!experiments/reports/.gitkeep
+model-registry/models/*
+!model-registry/models/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+.vite/
+*.tgz
+
+# Logs
+*.log
+logs/
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local infrastructure / tooling
+docker-compose.override.yml
+
+# Files created by scripts
+data/manifests/*.generated.json
+
+# Test coverage and reports
+*.xml
+
+# Keep the exception explicit:
+#   small synthetic fixtures under tests/fixtures/ MAY be committed.
+
+!tests/fixtures/

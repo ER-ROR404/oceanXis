@@ -1,0 +1,46 @@
+# --- Preprocessing configuration (config/preprocessing.yaml) ---
+# Source of truth: docs/04-data/preprocessing-pipeline.md, regridding.md,
+# quality-control.md, missing-data-policy.md, temporal-alignment.md, data-provenance.md.
+
+# Target grid (matches config/regions.yaml + contracts).
+target_grid:
+  spatial_resolution_degrees: 0.25
+  longitude_convention: "0_to_360"   # normalize ALL products to this; never mix (see docs/03-domain/regions.md)
+  normalize_lat_order: true          # NetCDF latitude may be ascending/descending; normalize ascending
+
+# Regridding (docs/04-data/regridding.md).
+regridding:
+  method: bilinear
+  fallback_method: nearest_neighbor
+  note: "Method recorded in provenance (contracts/data/provenance.schema.json)."
+
+# Quality control (docs/04-data/quality-control.md).
+quality_control:
+  invalid_values: [nan, -9999.0, 9999.0, -32767.0]
+  ocean_mask_required: true
+  note: "Land/ocean mask applied; coastal cells documented."
+
+# Missing data policy (docs/04-data/missing-data-policy.md).
+missing_data:
+  max_missing_channels_per_sample: 0     # MVP: all 7 channels required
+  max_missing_cells_fraction: 0.0        # MVP: no partial-channel samples
+  interpolation: none                    # no spatial/spatiotemporal fill for MVP
+  note: "NaN cells masked, not imputed (RFC: revisit for NRT gaps)."
+
+# Temporal alignment (docs/04-data/temporal-alignment.md).
+temporal:
+  daily_granularity: true
+  timestamp_normalization: "midnight_utc"
+  rep_vs_nrt_policy: "training uses coherent verified overlap; do not casually mix REP and NRT (docs/04-data/data-sources.md)"
+
+# Normalization (RULE 11). Stats computed from TRAINING data only.
+normalization:
+  statistics_source: training_only
+  persist: true
+  artifact: "model-registry/models/<model_name>/normalization.json"
+
+# Provenance (Golden Rule 16).
+provenance:
+  enabled: true
+  schema: "contracts/data/provenance.schema.json"
+  recorded_automatically: true
