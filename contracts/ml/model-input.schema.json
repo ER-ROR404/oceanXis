@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://sih.example/oceanembed/contracts/ml/model-input.schema.json",
   "title": "ModelInput",
-  "description": "Canonical ML inference input: normalized 7-channel surface tensor plus metadata. Hard contract — inference consumes exactly this (RULE 5).",
+  "description": "Canonical ML inference input: normalized surface tensor plus metadata. ADR-010: hybrid consumes a T-day lookback window. Hard contract — inference consumes exactly this (RULE 5).",
   "type": "object",
   "required": ["X", "channel_order", "grid", "normalization_version", "metadata"],
   "properties": {
@@ -10,9 +10,9 @@
       "type": "object",
       "required": ["shape", "dtype", "values"],
       "properties": {
-        "shape": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+        "shape": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 4, "description": "[T, 7, H, W] for the hybrid (Stage 2, ADR-010); [7, H, W] single-day for the CNN baseline comparator (Stage 1). T must equal the checkpoint's stored lookback_days." },
         "dtype": { "const": "float32" },
-        "values": { "type": "array", "description": "Normalized [7, H, W] floats." }
+        "values": { "type": "array", "description": "Normalized floats. Hybrid: [T, 7, H, W]; Stage-1 CNN: [7, H, W]." }
       }
     },
     "channel_order": {
@@ -32,6 +32,14 @@
       }
     },
     "normalization_version": { "type": "string", "description": "Must equal the checkpoint's stored normalization version." },
-    "metadata": { "type": "object", "additionalProperties": true }
+    "metadata": {
+      "type": "object",
+      "required": ["lookback_days", "architecture"],
+      "properties": {
+        "lookback_days": { "type": "integer", "minimum": 1, "description": "T for the hybrid window (ADR-010). 1 for the Stage-1 CNN baseline." },
+        "architecture": { "type": "string", "enum": ["cnn_lstm_hybrid", "cnn_encoder_decoder"] }
+      },
+      "additionalProperties": true
+    }
   }
 }
