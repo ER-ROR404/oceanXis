@@ -94,4 +94,4 @@ data/manifests/*.generated.json
 # Keep the exception explicit:
 #   small synthetic fixtures under tests/fixtures/ MAY be committed.
 
-!tests/fixtures/
+!tests/fixtures/data/proof
