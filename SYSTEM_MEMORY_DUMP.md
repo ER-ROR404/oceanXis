@@ -4698,4 +4698,58 @@ Authority spec: docs/superpowers/specs/2026-09-04-ml-architecture-design-v2.1.md
 8. Grid: H and W derived from canonical lat/lon, never hardcoded
 9. v2.0 deprecated: docs/superpowers/specs/2026-09-04-ml-architecture-design.md
 
+# 161. IMPLEMENTATION STATUS (2026-09-04)
+
+## Completed
+
+| Phase | Status | Commit | Tests |
+|-------|--------|--------|-------|
+| Phase 1: One-day proof | ✅ COMPLETE | `6b4f7a6` | 32 |
+| Phase 2: Harmonization | ✅ COMPLETE | `6b4f7a6` | 55 |
+| Phase 3.0: Data contract verification | ✅ COMPLETE | `6b4f7a6` | 8 |
+| Phase 3.1: Core ML model | ✅ COMPLETE | `56d11dd` | 52 |
+| Phase 3.2: Training pipeline | ✅ COMPLETE | `6e2f77d` | 68 |
+
+## Current test status
+
+```
+68 tests passing, 96% coverage
+├── test_nll_loss.py              10/10
+├── test_physics_constraints.py   16/16
+├── test_reconstruction_net.py    26/26
+└── test_training_pipeline.py     16/16
+```
+
+## Files implemented
+
+| File | Purpose |
+|------|---------|
+| `ml/src/oceanembed/models/reconstruction_net.py` | OceanEmbedNet (CNN + ConvLSTM + decoder) |
+| `ml/src/oceanembed/losses/nll_loss.py` | GaussianNLLLoss + masked variant |
+| `ml/src/oceanembed/losses/physics_constraints.py` | vertical_smoothness, surface_consistency, deep_stabilization |
+| `ml/src/oceanembed/data/dataset.py` | OceanEmbedDataset + create_dataloaders |
+| `ml/src/oceanembed/training/trainer.py` | Trainer + EarlyStopping |
+
+## Next phases
+
+| Phase | Task | Estimate | Status |
+|-------|------|----------|--------|
+| 3.3 | Colab training notebook | 20-30 min | NEXT |
+| 4 | First training run | 2-3 hours | BLOCKED (needs Colab GPU) |
+| 5 | Evaluation metrics | 1-2 hours | PENDING |
+| 6 | ARGO validation | 2-3 hours | PENDING |
+| 7 | Uncertainty calibration | 1-2 hours | PENDING |
+| 8 | Demo notebook | 1-2 hours | PENDING |
+| 9 | Frontend | 3-4 hours | PENDING |
+| 10 | Documentation | 1 hour | PENDING |
+
+## Key design decisions (from today)
+
+1. **Grid dimensions derived from input** — never hardcoded (spec §2.1)
+2. **Input projection layer** — handles dynamic coordinate channel counts
+3. **BatchNorm removed from ConvLSTMCell** — supports small spatial dims
+4. **Temporal window T=7** — input is 7 days, target is last day
+5. **No shuffling** — temporal split preserves time order
+6. **NLL loss primary** — uncertainty via σ² = softplus(log_var) + ε
+
 # END OF SYSTEM_MEMORY_DUMP.md
