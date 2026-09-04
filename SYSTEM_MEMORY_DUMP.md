@@ -4676,4 +4676,22 @@ ONLY AFTER THIS SUCCEEDS:
 
 OceanEmbed is a software-only, surface-observation-driven deep-learning system that harmonizes seven daily surface ocean variables to a 0.25° grid, learns a latent representation of the North Indian Ocean surface state, reconstructs temperature at 15 standard subsurface depths, validates against GLORYS and independent ARGO observations, and exposes the result as an interactive Bay of Bengal / Arabian Sea scientific data product.
 
+# 159. ML ARCHITECTURE DECISION (2026-09-04, evaluator-reviewed)
+
+Primary architecture: CNN spatial encoder + ConvLSTM temporal encoder + reconstruction decoder.
+
+Based on Su et al. 2022 (ConvLSTM, proven R2=0.99) and adapted for our 7-channel, 0.25° setup.
+
+Spatiotemporal clustering (Loo et al. 2026) is DEFERRED — must prove >5% RMSE gain in ablation study before inclusion.
+
+Full spec: docs/superpowers/specs/2026-09-04-ml-architecture-design.md
+
+# 160. FROZEN BEFORE CODING (2026-09-04)
+
+1. Inputs: SST, SSS, SSH/SLA, Current U/V, Wind U/V (7 channels, LOCKED)
+2. Sources: 5 Copernicus Marine products (verified 2026-09-02)
+3. Outputs: Temperature at 15 depths + uncertainty (mu, sigma)
+4. Validation: Independent ARGO profiles (never in training)
+5. Differentiation: Scientific credibility + uncertainty + ARGO validation (not model complexity)
+
 # END OF SYSTEM_MEMORY_DUMP.md

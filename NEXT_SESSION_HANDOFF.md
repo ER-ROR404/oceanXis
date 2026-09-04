@@ -4,9 +4,16 @@
 > This is the continuity handoff so development resumes without confusion.
 > Full evidence detail: `docs/work-log/2026-09-02-copernicus-validation.md`.
 
-## Where we are (start of work, 2026-09-02)
-Repo is a **pre-build skeleton**. Docs/contracts/config are complete; **no application/ML/data code
-written yet** (only `.gitkeep` placeholders in `backend/`, `ml/`, `data-engineering/`, etc.).
+## Current Status (2026-09-04)
+**Phase 2 COMPLETE** — data harmonization pipeline built, tested, committed.
+**Phase 3 READY** — ML architecture spec v2.0 written and committed, awaiting line-by-line evaluator review.
+
+### What exists today (committed):
+- `data-engineering/src/oceanembed_data/` — catalog, regions, copernicus, harmonization (32+23+19+13 tests = 55 total)
+- `scripts/build_training_dataset.py` — Zarr tensor assembly + normalization
+- `scripts/download_historical.py` — chunked bounded-period downloads
+- `data/tensors/bay_of_bengal/` — 1-day proof tensors (X: 1x7x69x81, Y: 1x15x69x81, 94.7% valid)
+- `docs/superpowers/specs/2026-09-04-ml-architecture-design.md` — FULL ML architecture spec (evaluator-reviewed, 836 lines)
 
 ## What we PROVED today (Copernicus API validation — PHASE COMPLETE)
 All **7 surface inputs + GLORYS target** verified live via `copernicusmarine` `describe()` +
@@ -31,11 +38,9 @@ All **7 surface inputs + GLORYS target** verified live via `copernicusmarine` `d
 - **GLORYS = target ONLY** (never an input — avoid target leakage, RULE 8/RULE 9).
 
 ## OPEN items / decisions still needed from user
-1. **Production framing:** GLORYS is NOT near-real-time (reanalysis, ~1–2 mo latency). Option A = keep GLORYS
-   target & report latency; Option B = ADR to switch live target to an NRT temperature product.
-2. **ARGO:** proceed with raw ARGO GDAC float harness (recommended) vs CORA-OA gridded MVP shortcut.
-3. **Next action queued:** run ONE real one-day mini-download (SST, BoB, ~0.2–0.5 MB) to prove xarray
-   round-trip + NaN/units QC — Phase 1 one-day exit gate. Then start Phase 1 data-engineering.
+1. **Spec review:** User is reviewing `docs/superpowers/specs/2026-09-04-ml-architecture-design.md` line-by-line. Wait for approval before writing implementation code.
+2. **Historical data download:** 2018-2023 training data not yet downloaded. Can run in parallel with Phase 3 architecture coding.
+3. **ARGO data:** Not downloaded (correct — independent validation, Phase 6).
 
 ## Environment — how to resume
 - Python 3.11 venv: `/home/joel/Projects/ERROR404/.venv` (`source .venv/bin/activate`)
