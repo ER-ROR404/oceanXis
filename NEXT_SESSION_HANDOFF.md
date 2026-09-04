@@ -6,14 +6,14 @@
 
 ## Current Status (2026-09-04)
 **Phase 2 COMPLETE** — data harmonization pipeline built, tested, committed.
-**Phase 3 READY** — ML architecture spec v2.0 written and committed, awaiting line-by-line evaluator review.
+**Phase 3 READY** — ML architecture spec v2.1 written and committed, implementation-ready.
 
 ### What exists today (committed):
-- `data-engineering/src/oceanembed_data/` — catalog, regions, copernicus, harmonization (32+23+19+13 tests = 55 total)
+- `data-engineering/src/oceanembed_data/` — catalog, regions, copernicus, harmonization (55 tests passing)
 - `scripts/build_training_dataset.py` — Zarr tensor assembly + normalization
 - `scripts/download_historical.py` — chunked bounded-period downloads
 - `data/tensors/bay_of_bengal/` — 1-day proof tensors (X: 1x7x69x81, Y: 1x15x69x81, 94.7% valid)
-- `docs/superpowers/specs/2026-09-04-ml-architecture-design.md` — FULL ML architecture spec (evaluator-reviewed, 836 lines)
+- `docs/superpowers/specs/2026-09-04-ml-architecture-design-v2.1.md` — AUTHORITATIVE ML spec (29 sections, evaluator-hardened)
 
 ## What we PROVED today (Copernicus API validation — PHASE COMPLETE)
 All **7 surface inputs + GLORYS target** verified live via `copernicusmarine` `describe()` +
@@ -38,9 +38,10 @@ All **7 surface inputs + GLORYS target** verified live via `copernicusmarine` `d
 - **GLORYS = target ONLY** (never an input — avoid target leakage, RULE 8/RULE 9).
 
 ## OPEN items / decisions still needed from user
-1. **Spec review:** User is reviewing `docs/superpowers/specs/2026-09-04-ml-architecture-design.md` line-by-line. Wait for approval before writing implementation code.
+1. **Spec v2.1 is approved.** Next step is Phase 3.0: Data Contract Verification (verify exact Copernicus schema + coverage + generate coverage matrix) before writing `reconstruction_net.py`.
 2. **Historical data download:** 2018-2023 training data not yet downloaded. Can run in parallel with Phase 3 architecture coding.
 3. **ARGO data:** Not downloaded (correct — independent validation, Phase 6).
+4. **Loss weight tuning:** Experiments A-F defined in spec v2.1 Appendix E. Coefficients to be selected via validation, not frozen.
 
 ## Environment — how to resume
 - Python 3.11 venv: `/home/joel/Projects/ERROR404/.venv` (`source .venv/bin/activate`)

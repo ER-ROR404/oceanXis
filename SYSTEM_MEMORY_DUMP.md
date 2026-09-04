@@ -4676,22 +4676,26 @@ ONLY AFTER THIS SUCCEEDS:
 
 OceanEmbed is a software-only, surface-observation-driven deep-learning system that harmonizes seven daily surface ocean variables to a 0.25° grid, learns a latent representation of the North Indian Ocean surface state, reconstructs temperature at 15 standard subsurface depths, validates against GLORYS and independent ARGO observations, and exposes the result as an interactive Bay of Bengal / Arabian Sea scientific data product.
 
-# 159. ML ARCHITECTURE DECISION (2026-09-04, evaluator-reviewed)
+# 159. ML ARCHITECTURE DECISION (2026-09-04, v2.1 evaluator-hardened)
 
-Primary architecture: CNN spatial encoder + ConvLSTM temporal encoder + reconstruction decoder.
+Primary architecture: Multi-scale CNN spatial encoder + ConvLSTM temporal encoder + depth decoder.
 
 Based on Su et al. 2022 (ConvLSTM, proven R2=0.99) and adapted for our 7-channel, 0.25° setup.
 
-Spatiotemporal clustering (Loo et al. 2026) is DEFERRED — must prove >5% RMSE gain in ablation study before inclusion.
+Spatiotemporal clustering (Loo et al. 2026) is DEFERRED — must prove meaningful improvement in ablation study before inclusion.
 
-Full spec: docs/superpowers/specs/2026-09-04-ml-architecture-design.md
+Authority spec: docs/superpowers/specs/2026-09-04-ml-architecture-design-v2.1.md
 
-# 160. FROZEN BEFORE CODING (2026-09-04)
+# 160. FROZEN BEFORE CODING (2026-09-04, v2.1)
 
 1. Inputs: SST, SSS, SSH/SLA, Current U/V, Wind U/V (7 channels, LOCKED)
-2. Sources: 5 Copernicus Marine products (verified 2026-09-02)
-3. Outputs: Temperature at 15 depths + uncertainty (mu, sigma)
-4. Validation: Independent ARGO profiles (never in training)
+2. Sources: 5 Copernicus Marine products (verified 2026-09-02, but IDs must be re-verified at implementation via runtime manifest)
+3. Outputs: Temperature at 15 depths + aleatoric uncertainty (mu, sigma). Epistemic optional/deferred.
+4. Validation: ARGO profiles (excluded from training, qualified independence — reanalyses assimilate ARGO)
 5. Differentiation: Scientific credibility + uncertainty + ARGO validation (not model complexity)
+6. Loss: NLL primary, physics constraints are ablation experiments (A/B/C/D/E/F), not frozen constants
+7. Coordinate encoding: sin/cos seasonal encoding (not raw day-of-year)
+8. Grid: H and W derived from canonical lat/lon, never hardcoded
+9. v2.0 deprecated: docs/superpowers/specs/2026-09-04-ml-architecture-design.md
 
 # END OF SYSTEM_MEMORY_DUMP.md
