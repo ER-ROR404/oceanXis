@@ -1,7 +1,7 @@
 # OceanEmbed — ML Architecture Specification v2.0
 
 > **Date:** 2026-09-04
-> **Status:** SPECIFICATION REVIEW — architecture not yet frozen
+> **Status:** DEPRECATED — replaced by v2.1 (`2026-09-04-ml-architecture-design-v2.1.md`)
 > **Purpose:** Complete ML architecture spec for the OceanEmbed subsurface temperature reconstruction system.
 > **Competition:** SIH26066 — Ministry of Earth Sciences / INCOIS — Disaster Management theme
 > **Goal:** Win against 500+ teams with scientific credibility, not model complexity.
