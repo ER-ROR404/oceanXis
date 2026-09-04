@@ -95,3 +95,8 @@ data/manifests/*.generated.json
 #   small synthetic fixtures under tests/fixtures/ MAY be committed.
 
 !tests/fixtures/data/proof
+
+# Proof data and built tensors (local only)
+data/proof/
+data/tensors/
+data/processed/
