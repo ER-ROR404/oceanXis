@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gpu = ["torch>=2.2+cu121"]  # install CUDA build via torch index; see docs/07-operations/training-operations.md
+gpu = ["torch>=2.2"]  # install CUDA build via torch index; see docs/07-operations/training-operations.md
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
