@@ -105,6 +105,17 @@ def harmonize_surface_input(
         da = da.isel(depth=depth_level)
         logger.info("Extracted depth level %d for %s", depth_level, variable)
 
+    # Unit harmonization at the preprocessing boundary (docs/03-domain/units.md):
+    # SST native unit is kelvin; canonical internal unit is °C to match the
+    # GLORYS °C target. Model training is z-score invariant to this shift,
+    # but stored tensors / demo outputs must be °C (provenance contract).
+    if variable == "analysed_sst":
+        source_units = str(ds[variable].attrs.get("units", "")).lower()
+        if "kelvin" in source_units or "k" == source_units.strip():
+            da = da - 273.15
+            da.attrs["units"] = "degrees_C"
+            logger.info("Converted %s %s -> °C (T_C = T_K - 273.15)", variable, source_units)
+
     # Identify lat/lon dimension names (vary across products)
     lat_dim = _find_dim(da, ["latitude", "lat"])
     lon_dim = _find_dim(da, ["longitude", "lon"])

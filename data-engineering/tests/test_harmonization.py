@@ -44,6 +44,7 @@ def sst_dataset() -> xr.Dataset:
             data, dims=["time", "latitude", "longitude"],
             coords={"latitude": lat, "longitude": lon,
                     "time": np.array(["2024-06-01"], dtype="datetime64[ns]")},
+            attrs={"units": "kelvin"},  # real SST product is Kelvin (verified)
         )
     })
 
@@ -198,6 +199,26 @@ class TestHarmonizeSurfaceInput:
         result = harmonize_surface_input(sst_dataset, "analysed_sst", region_bob)
         assert "time" in result.dims
         assert result.sizes["time"] == 1
+
+    def test_sst_kelvin_to_celsius_conversion(self, sst_dataset, region_bob):
+        """SST must be converted Kelvin -> °C at the preprocessing boundary
+        (docs/03-domain/units.md: internal unit is °C; target is °C).
+
+        MODEL-AGNOSTIC but provenance-critical: x is z-scored so training
+        is invariant, but the tensors stored on Drive / shown in the demo
+        must be °C to match the docs contract.
+        """
+        result = harmonize_surface_input(sst_dataset, "analysed_sst", region_bob)
+        # Fixture data is 300-320 K -> must land in 27-47 °C range
+        assert float(result.min()) >= 300.0 - 273.15
+        assert float(result.max()) <= 320.0 - 273.15
+        # Seeded false-positive guard: verify an actual shift happened
+        assert float(np.nanmean(result.values)) < 60.0
+
+    def test_other_variables_not_converted(self, sss_dataset, region_bob):
+        """SSS (PSU), SSH (m), currents/winds (m/s) must NOT be shifted."""
+        result = harmonize_surface_input(sss_dataset, "sos", region_bob, depth_level=0)
+        assert float(np.nanmean(result.values)) > 25.0  # ~30 PSU unchanged
 
     def test_different_native_resolutions(self, region_bob):
         """SST (0.05°) and wind (0.125°) should both regrid to 0.25°."""
