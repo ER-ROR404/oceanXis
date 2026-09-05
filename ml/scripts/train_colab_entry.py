@@ -269,7 +269,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     except SystemExit as exc:
-        return int(exc.code or 1)
+        # SystemExit can carry an int, a message (str), or None. Only ints are
+        # valid process exit codes; anything else maps to the generic 1.
+        code = exc.code
+        return code if isinstance(code, int) else 1
     except FileNotFoundError as exc:
         print(f"error: {exc}")
         return 2

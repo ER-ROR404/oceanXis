@@ -157,6 +157,46 @@ class TestPreflight:
         assert result is not None or result is None  # just confirms no exception
 
 
+class TestExitCodeHandling:
+    def test_string_systemexit_returns_one_not_valueerror(self, config_file, tmp_path, monkeypatch) -> None:
+        """Regression: SystemExit carrying a *message* (e.g. 'oceanembed package not
+        importable...') must map to CLI exit code 1 — not crash with
+        ValueError: invalid literal for int()."""
+        def _boom(*args, **kwargs):
+            raise SystemExit("oceanembed package not importable. Install it first: ...")
+        monkeypatch.setattr(entry, "run_training", _boom)
+        code = entry.main([
+            "--config", str(config_file),
+            "--artifacts-dir", str(tmp_path / "artifacts"),
+            "--data-dir", str(tmp_path / "region"),
+        ])
+        assert code == 1
+
+    def test_int_systemexit_passthrough(self, config_file, tmp_path, monkeypatch) -> None:
+        """An integer SystemExit code (e.g. SystemExit(2)) must pass through unchanged."""
+        def _boom(*args, **kwargs):
+            raise SystemExit(3)
+        monkeypatch.setattr(entry, "run_training", _boom)
+        code = entry.main([
+            "--config", str(config_file),
+            "--artifacts-dir", str(tmp_path / "artifacts"),
+            "--data-dir", str(tmp_path / "region"),
+        ])
+        assert code == 3
+
+    def test_none_systemexit_returns_one(self, config_file, tmp_path, monkeypatch) -> None:
+        """Bare SystemExit() (code None) maps to 1."""
+        def _boom(*args, **kwargs):
+            raise SystemExit()
+        monkeypatch.setattr(entry, "run_training", _boom)
+        code = entry.main([
+            "--config", str(config_file),
+            "--artifacts-dir", str(tmp_path / "artifacts"),
+            "--data-dir", str(tmp_path / "region"),
+        ])
+        assert code == 1
+
+
 class TestMainCLI:
     def test_cli_check_returns_zero(self, config_file, tmp_path) -> None:
         env = dict(__import__("os").environ)
