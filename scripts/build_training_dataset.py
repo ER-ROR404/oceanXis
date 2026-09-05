@@ -43,6 +43,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger("build_training_dataset")
 
+
+def compute_common_times(input_arrays: dict[str, xr.DataArray], target: xr.DataArray) -> list:
+    """Sorted intersection of all input channel time axes AND the target axis.
+
+    The GLORYS target is the constraint: a day that all inputs share is
+    useless for training if the target lacks it (e.g. a legacy single-day
+    proof file present in every input channel, or a GLORYS data gap).
+    Intersecting the target axis prevents ``target.sel(time=...)`` from
+    raising KeyError on such days.
+
+    Args:
+        input_arrays: Harmonized surface inputs keyed by channel name.
+        target: Harmonized GLORYS target [time, depth, H, W].
+
+    Returns:
+        Sorted list of common np.datetime64 timestamps.
+    """
+    common = set(target.time.values)
+    for arr in input_arrays.values():
+        common &= set(arr.time.values)
+    return sorted(common)
+
 # Variable mapping: catalog channel name -> NetCDF variable name in downloaded files
 VARIABLE_MAP = {
     "SST": "analysed_sst",
@@ -299,15 +321,8 @@ def main():
     logger.info("Step 3: Stacking inputs into tensor")
     logger.info("=" * 60)
 
-    # Use the common time axis (intersection of all inputs)
-    common_times = None
-    for ch, arr in input_arrays.items():
-        if common_times is None:
-            common_times = set(arr.time.values)
-        else:
-            common_times = common_times & set(arr.time.values)
-
-    common_times = sorted(common_times)
+    # Use the common time axis (intersection of all inputs AND the target)
+    common_times = compute_common_times(input_arrays, target)
     logger.info("Common time steps: %d", len(common_times))
 
     # Build [time, 7, H, W] array

@@ -12,7 +12,9 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
+import xarray as xr
 
 _SCRIPT = Path(__file__).resolve().parent.parent.parent / "scripts" / "build_training_dataset.py"
 
@@ -71,3 +73,50 @@ class TestIsCleanNc:
     )
     def test_flag(self, name: str, expected: bool) -> None:
         assert build._is_clean_nc(Path(name)) is expected
+
+
+class TestComputeCommonTimes:
+    """Intersection over all inputs AND the GLORYS target axis.
+
+    Regression: inputs contained a legacy 2024-06-01 proof file (in ALL
+    channels), so the input-only intersection included that day, but GLORYS
+    (2022-2023 only) lacked it -> target.sel(common_times) raised KeyError.
+    """
+
+    def _arr(self, days: list[str]) -> object:
+        times = np.array(days, dtype="datetime64[D]")
+        return xr.DataArray(
+            np.zeros(len(times)), coords={"time": times}, dims="time"
+        )
+
+    def test_intersects_inputs_and_target(self) -> None:
+        arr1 = self._arr(["2022-01-01", "2022-01-02", "2022-01-03"])
+        arr2 = self._arr(["2022-01-01", "2022-01-02", "2022-01-03", "2022-01-04"])
+        # Target lacks 2022-01-04 (e.g. GLORYS-only gap or legacy proof file)
+        target = self._arr(["2022-01-01", "2022-01-02", "2022-01-03"])
+        common = build.compute_common_times({"a": arr1, "b": arr2}, target)
+        assert common == [
+            np.datetime64("2022-01-01"),
+            np.datetime64("2022-01-02"),
+            np.datetime64("2022-01-03"),
+        ]
+
+    def test_drops_days_target_lacks(self) -> None:
+        # Regression: all inputs agree on a day, target does not
+        arr = self._arr(["2022-01-01", "2024-06-01"])
+        target = self._arr(["2022-01-01"])  # GLORYS predates 2024
+        common = build.compute_common_times({"a": arr}, target)
+        assert common == [np.datetime64("2022-01-01")]
+
+    def test_sorted_ascending(self) -> None:
+        arr = self._arr(["2022-01-02", "2022-01-01"])
+        target = self._arr(["2022-01-01", "2022-01-02"])
+        assert build.compute_common_times({"a": arr}, target) == [
+            np.datetime64("2022-01-01"),
+            np.datetime64("2022-01-02"),
+        ]
+
+    def test_empty_when_no_overlap(self) -> None:
+        arr = self._arr(["2022-01-01"])
+        target = self._arr(["2023-01-01"])
+        assert build.compute_common_times({"a": arr}, target) == []
