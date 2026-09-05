@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from oceanembed_data.catalog import CANONICAL_DEPTHS_M
 from oceanembed_data.harmonization import (
     build_validity_mask,
     harmonize_glorys_target,
@@ -234,6 +235,110 @@ class TestHarmonizeGlorysTarget:
     def test_output_is_numeric(self, glorys_dataset, region_bob):
         result = harmonize_glorys_target(glorys_dataset, region=region_bob)
         assert np.issubdtype(result.dtype, np.floating)
+
+
+# ---------------------------------------------------------------------------
+# Tests: vertical depth interpolation to canonical depths
+# ---------------------------------------------------------------------------
+
+class TestVerticalDepthInterpolation:
+    """GLORYS native depths are irregular (not at canonical depths).
+
+    Regression: nearest-level selection produced targets offset by up to
+    ~57m (e.g. 700m canonical <- 643.57m native, 1000m <- 902.34m native).
+    Must linearly interpolate vertically onto the exact canonical depths.
+    """
+
+    def _glorys_with_linear_temp(self, native_depths, slope=0.02, base=20.0):
+        """Build a GLORYS-like dataset where thetao = base + slope*depth."""
+        lat = np.arange(5.0, 6.0, 0.083)
+        lon = np.arange(80.0, 81.0, 0.083)
+        # thetao [time, depth, lat, lon], spatially constant for simplicity
+        data = (base + slope * native_depths)[None, :, None, None]
+        data = np.broadcast_to(
+            data, (1, len(native_depths), len(lat), len(lon))
+        ).astype(np.float32)
+        return xr.Dataset({
+            "thetao": xr.DataArray(
+                data,
+                dims=["time", "depth", "latitude", "longitude"],
+                coords={
+                    "latitude": lat,
+                    "longitude": lon,
+                    "time": np.array(["2024-06-01"], dtype="datetime64[ns]"),
+                    "depth": native_depths,
+                },
+            )
+        })
+
+    def test_interpolates_exact_canonical_depths(self):
+        """Targets land on the exact canonical depths, not nearest native."""
+        # Native levels from the real GLORYS product (probe-verified)
+        native = np.array([
+            0.49, 1.54, 2.64, 3.81, 5.15, 6.82, 8.97, 11.82, 15.69, 21.07,
+            28.49, 38.73, 52.81, 71.59, 97.04, 130.67, 174.01, 229.52,
+            299.83, 387.45, 494.07, 620.99, 769.00, 937.73, 1125.64,
+            1331.14, 1551.60, 1784.25, 2025.69, 2272.15, 2519.46, 2763.49,
+            3000.00, 3225.33, 3435.00,
+        ])
+        ds = self._glorys_with_linear_temp(native)
+        result = harmonize_glorys_target(ds, region=RegionBounds(
+            id="probe", lat_min=5.0, lat_max=6.0, lon_min=80.0, lon_max=81.0
+        ))
+
+        # Depth coordinate must be exactly the 15 canonical depths
+        np.testing.assert_allclose(result.depth.values, CANONICAL_DEPTHS_M, atol=1e-6)
+
+        # Linear profile must be recovered exactly at canonical depths
+        # (thetao = 20 + 0.02 * z)
+        for i, target_depth in enumerate(CANONICAL_DEPTHS_M):
+            expected = 20.0 + 0.02 * target_depth
+            actual = float(result.isel(time=0, depth=i, latitude=0, longitude=0))
+            assert abs(actual - expected) < 0.01, (
+                f"depth={target_depth}m: got {actual}, expected {expected}"
+            )
+
+    def test_interpolates_between_irregular_native_levels(self):
+        """Verbatim regression: 700m was mapped to 643.57m (nearest).
+        Now must interpolate between the bracketing native levels."""
+        native = np.array([0.49, 26.6, 318.1, 541.1, 643.6, 763.3, 902.3, 1062.4])
+        slope = 0.5  # steep so offsets are obvious
+        ds = self._glorys_with_linear_temp(native, slope=slope)
+        result = harmonize_glorys_target(ds, region=RegionBounds(
+            id="probe", lat_min=5.0, lat_max=6.0, lon_min=80.0, lon_max=81.0
+        ))
+
+        depth_700 = CANONICAL_DEPTHS_M.index(700)
+        actual = float(result.isel(time=0, depth=depth_700, latitude=0, longitude=0))
+        expected = 20.0 + slope * 700.0  # 20 + 350 = 370
+        assert abs(actual - expected) < 0.01, (
+            f"700m: got {actual}, expected interpolated {expected}"
+        )
+
+    def test_1000m_uses_deeper_native_levels(self):
+        """The 1000m canonical depth must be interpolated (not clamped to
+        the previous native level of 902m)."""
+        native = np.array([0.49, 26.6, 318.1, 541.1, 643.6, 763.3, 902.3, 1062.4])
+        ds = self._glorys_with_linear_temp(native, slope=0.5)
+        result = harmonize_glorys_target(ds, region=RegionBounds(
+            id="probe", lat_min=5.0, lat_max=6.0, lon_min=80.0, lon_max=81.0
+        ))
+        depth_1000 = CANONICAL_DEPTHS_M.index(1000)
+        actual = float(result.isel(time=0, depth=depth_1000, latitude=0, longitude=0))
+        expected = 20.0 + 0.5 * 1000.0
+        assert abs(actual - expected) < 0.01, (
+            f"1000m: got {actual}, expected {expected}"
+        )
+
+    def test_raises_when_deepest_canonical_not_available(self):
+        """If native grid cannot bracket 1000m, fail loudly rather than
+        silently substituting a shallower level."""
+        native = np.array([0.49, 26.6, 318.1, 541.1, 643.6, 763.3, 902.3])
+        ds = self._glorys_with_linear_temp(native)
+        with pytest.raises(ValueError, match="1000|depth"):
+            harmonize_glorys_target(ds, region=RegionBounds(
+                id="probe", lat_min=5.0, lat_max=6.0, lon_min=80.0, lon_max=81.0
+            ))
 
 
 # ---------------------------------------------------------------------------

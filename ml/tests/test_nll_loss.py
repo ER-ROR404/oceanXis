@@ -129,6 +129,49 @@ class TestMaskedNLLLoss:
         # Should still produce finite loss
         assert torch.isfinite(loss_partial)
 
+    def test_masked_loss_nan_targets(self):
+        """Loss stays finite when targets are NaN over masked cells.
+
+        Regression: 0 * NaN = NaN in floating point. Real GLORYS data has
+        NaN at masked land/shallow cells; nll * mask must not re-introduce
+        NaN into the denominator.
+        """
+        mu = torch.randn(1, N_OUTPUT_CHANNELS, 8, 8)
+        log_var = torch.zeros(1, N_OUTPUT_CHANNELS, 8, 8)
+        target = torch.randn(1, N_OUTPUT_CHANNELS, 8, 8)
+        target[0, :, :4, :4] = torch.nan  # NaN over invalid cells
+        mask = torch.ones(1, 1, 8, 8)
+        mask[0, 0, :4, :4] = 0  # same cells invalid
+
+        loss = masked_nll_loss(mu, log_var, target, mask=mask)
+        assert torch.isfinite(loss)
+
+    def test_masked_loss_nan_at_valid_cell_depth(self):
+        """Loss stays finite when a valid cell has NaN at some depths.
+
+        Regression: real GLORYS has NaN at deep depths below the local
+        seafloor (e.g. 1000m target over shelf cells) even though the
+        spatial mask marks the cell valid. NaN targets at valid cells
+        must not poison the loss.
+        """
+        mu = torch.randn(1, N_OUTPUT_CHANNELS, 8, 8)
+        log_var = torch.zeros(1, N_OUTPUT_CHANNELS, 8, 8)
+        target = torch.randn(1, N_OUTPUT_CHANNELS, 8, 8)
+        mask = torch.ones(1, 1, 8, 8)  # all cells spatially valid
+        # Deep depths (last 5 channels) are NaN everywhere — shelf cells
+        target[0, -5:, :, :] = torch.nan
+
+        loss = masked_nll_loss(mu, log_var, target, mask=mask)
+        assert torch.isfinite(loss)
+
+        # Loss should only average over finite cells
+        var_const = float(torch.nn.functional.softplus(torch.zeros(()))) + 1e-6
+        full_nll = 0.5 * (torch.log(torch.tensor(var_const)) + (target - mu) ** 2 / var_const)
+        valid_nll = full_nll.masked_fill(~torch.isfinite(target), 0.0)
+        n_valid = torch.isfinite(target).float().sum()
+        expected = valid_nll.sum() / n_valid
+        assert torch.allclose(loss, expected, atol=1e-5)
+
     def test_masked_loss_zero_mask(self):
         """Loss handles edge case of all-invalid mask gracefully."""
         mu = torch.randn(1, N_OUTPUT_CHANNELS, 8, 8)
@@ -151,3 +194,25 @@ class TestMaskedNLLLoss:
         loss_unmasked = loss_fn(mu, log_var, target)
         loss_masked = masked_nll_loss(mu, log_var, target, mask=mask)
         assert torch.allclose(loss_unmasked, loss_masked, atol=1e-5)
+
+    def test_masked_loss_dataloader_mask_shape(self):
+        """Handles 3D masks [B, H, W] as produced by the DataLoader stack."""
+        mu = torch.randn(2, N_OUTPUT_CHANNELS, 8, 8)
+        log_var = torch.zeros(2, N_OUTPUT_CHANNELS, 8, 8)
+        target = torch.randn(2, N_OUTPUT_CHANNELS, 8, 8)
+        mask = torch.ones(2, 8, 8)  # 3D, no channel dim
+        mask[:, :4, :4] = 0.0  # some invalid cells
+
+        loss = masked_nll_loss(mu, log_var, target, mask=mask)
+        assert torch.isfinite(loss)
+
+        # Equality: masked loss over valid cells equals unmasked loss over
+        # the same (valid) set when variance is constant (log_var = 0).
+        # variance = softplus(0) + 1e-6 = log(2) + 1e-6
+        var_const = float(torch.nn.functional.softplus(torch.zeros(()))) + 1e-6
+        full_nll = 0.5 * (torch.log(torch.tensor(var_const)) + (target - mu) ** 2 / var_const)
+        # valid cells = all except masked-out top-left quadrant
+        expanded = mask.unsqueeze(1).expand_as(full_nll)
+        valid_nll = full_nll * expanded
+        expected = valid_nll.sum() / expanded.sum()
+        assert torch.allclose(loss, expected, atol=1e-5)

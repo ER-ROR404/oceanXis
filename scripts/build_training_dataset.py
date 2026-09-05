@@ -72,11 +72,32 @@ def find_nc_files(data_dir: Path, channel: str) -> list[Path]:
     """Find all NetCDF files for a channel in the processed directory.
 
     Searches data_dir/{channel}/*.nc and data_dir/glorys_temperature/*.nc.
+
+    Robust against interrupted downloads:
+      - excludes partial writes (`*.nc.<tmp>` from copernicusmarine)
+      - excludes Copernicus duplicate files (`name_(1).nc`) created when a
+        download is re-run after an interruption
     """
     channel_dir = data_dir / channel
     if not channel_dir.exists():
         return []
-    return sorted(channel_dir.glob("*.nc"))
+    candidates = sorted(channel_dir.glob("*.nc"))
+    return [p for p in candidates if _is_clean_nc(p)]
+
+
+def _is_clean_nc(path: Path) -> bool:
+    """True if a NetCDF path is a final, non-duplicated download artifact.
+
+    Rejects Copernicus auto-renamed duplicates created when a download is
+    re-run after an interruption: ``name_(1).nc``, ``name_(2).nc``, etc.
+    (Partial write artifacts like ``name.nc.<rand>`` do not match ``*.nc``
+    globs and never reach this check.)
+    """
+    name = path.name
+    for suffix in ("_(1).nc", "_(2).nc", "_(3).nc"):
+        if name.endswith(suffix):
+            return False
+    return True
 
 
 def load_and_harmonize_channel(

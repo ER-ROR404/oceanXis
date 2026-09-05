@@ -23,6 +23,26 @@ uses Semantic Versioning. Releases are created through the `release.yml` workflo
 
 ### Not yet implemented
 
-- Copernicus `describe()` connection proof.
-- Dataset verification matrix (dataset IDs must be verified, not guessed).
 - All application/ML implementation code (backend, ml, data-engineering, frontend, database migrations).
+
+## 2026-09-02 — Copernicus Marine data validation (Phase 1 pre-work)
+
+### Added
+
+- Live-verified ALL 7 surface input channels + GLORYS temperature target for Bay of Bengal & Arabian Sea
+  via `copernicusmarine` `describe()` + `subset(dry_run=True)`. No big datasets downloaded.
+- Confirmed train/validation/test split feasibility: **train 2018–2023 / validation 2024 / test 2025** —
+  full 7-input + GLORYS matrix GREEN across all windows.
+- Confirmed near-real-time production readiness for all 5 NRT surface inputs (data at 7-days-ago);
+  flagged GLORYS as reanalysis-only (NOT NRT, ~1–2 mo latency).
+- Identified ARGO validation path (raw GDAC profiles preferred; CORA-OA gridded fallback, subset-supported).
+- `config/datasets.yaml`: replaced INVALID old candidate IDs with verified IDs and set `verified: true`.
+- Docs updated: `docs/work-log/2026-09-02-copernicus-validation.md`, `docs/04-data/data-sources.md`,
+  `docs/04-data/dataset-registry.md`, and added `NEXT_SESSION_HANDOFF.md` (session continuity).
+- Deprecated invalid dataset IDs that were present from the original skeleton (see handoff).
+
+### Verdict
+
+- **Auth + API health:** PASS. **All 7 inputs + target:** VERIFIED (16/16 GREEN at 2024-06-15).
+- **Split 2018–23/2024/2025:** AVAILABLE (all channels). **Production NRT inputs:** AVAILABLE.
+- **GLORYS as live target:** CAVEAT (reanalysis latency) — open ADR decision (see handoff §Open items).

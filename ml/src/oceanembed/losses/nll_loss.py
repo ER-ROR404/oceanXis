@@ -53,6 +53,11 @@ def masked_nll_loss(
 ) -> torch.Tensor:
     """NLL loss masked to valid ocean cells only.
 
+    The effective mask is ``mask AND finite(target)``: real GLORYS is NaN
+    at land cells AND at individual depth levels below the local seafloor
+    (e.g. the 1000m target over shelf cells). Both sources must be excluded
+    from the loss, and neither may poison the autograd graph (0 * NaN = NaN).
+
     Args:
         mu: Predicted mean [B, C, H, W].
         log_var: Raw log-variance [B, C, H, W].
@@ -63,13 +68,27 @@ def masked_nll_loss(
     Returns:
         Scalar loss (mean over valid cells only).
     """
+    # Normalize mask to [B, 1, H, W]:
+    # - 3D [B, H, W] comes from DataLoader stack of per-sample masks
+    # - 4D [B, 1, H, W] is the canonical form
+    if mask.dim() == 3:
+        mask = mask.unsqueeze(1)
+    if mask.dim() == 4 and mask.shape[1] == 1 and mu.shape[1] > 1:
+        mask = mask.expand_as(mu)
+
+    # Effective mask = spatial mask AND finite target. NaN target cells
+    # (land or below-seafloor depths) are excluded entirely — a zeroed
+    # target with mu != 0 would add spurious error to the loss and NaN
+    # gradient risk to the graph.
+    effective_mask = (mask.bool() & torch.isfinite(target)).float()
+
+    # Replace invalid targets with 0 so nll is finite, then mask it out.
+    target_safe = torch.where(
+        torch.isfinite(target), target, torch.zeros_like(target)
+    )
     variance = torch.nn.functional.softplus(log_var) + eps
-    nll = 0.5 * (torch.log(variance) + (target - mu) ** 2 / variance)
+    nll = 0.5 * (torch.log(variance) + (target_safe - mu) ** 2 / variance)
 
-    # Expand mask to match channel dimension if needed
-    if mask.dim() == 4 and mask.shape[1] == 1 and nll.shape[1] > 1:
-        mask = mask.expand_as(nll)
-
-    masked_nll = nll * mask
-    n_valid = mask.sum().clamp(min=1.0)
+    masked_nll = nll * effective_mask
+    n_valid = effective_mask.sum().clamp(min=1.0)
     return masked_nll.sum() / n_valid

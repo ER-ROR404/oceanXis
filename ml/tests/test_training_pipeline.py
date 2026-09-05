@@ -24,8 +24,7 @@ from oceanembed.training.trainer import Trainer, EarlyStopping
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 
-@pytest.fixture
-def fake_zarr_dir(tmp_path: Path):
+def _make_fake_zarr_dir(tmp_path: Path) -> tuple[Path, int, int, int, int, int]:
     """Create minimal fake Zarr tensors for testing."""
     region_dir = tmp_path / "test_region"
     region_dir.mkdir(parents=True, exist_ok=True)
@@ -93,10 +92,81 @@ def fake_zarr_dir(tmp_path: Path):
     return region_dir, n_days, n_channels, n_depths, h, w
 
 
+@pytest.fixture
+def fake_zarr_dir(tmp_path: Path):
+    """Minimal fake Zarr tensors (see _make_fake_zarr_dir)."""
+    return _make_fake_zarr_dir(tmp_path)
+
+
+@pytest.fixture
+def fake_zarr_dir_with_nan(tmp_path: Path):
+    """Zarr tensors where Y contains NaN over specific cells (land/shallow).
+
+    Mirrors real GLORYS: ~37% of target cells are NaN (land + coastal gaps
+    below 5m). Training must ignore them via the validity mask.
+    """
+    region_dir, n_days, n_channels, n_depths, h, w = _make_fake_zarr_dir(tmp_path)
+
+    # Inject NaN into a fixed spatial region across all depths (coastal block)
+    Y = xr.open_zarr(region_dir / "Y.zarr")["__xarray_dataarray_variable__"]
+    y_vals = Y.values.copy()
+    y_vals[:, :, h // 2 :, w // 2 :] = np.nan  # bottom-right quadrant NaN
+    xr.DataArray(
+        y_vals,
+        dims=["time", "depth", "latitude", "longitude"],
+        coords={
+            "time": np.arange(n_days),
+            "depth": [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000],
+            "latitude": np.linspace(5.0, 30.0, h),
+            "longitude": np.linspace(45.0, 105.0, w),
+        },
+    ).to_zarr(region_dir / "Y.zarr", mode="w", consolidated=True)
+
+    # Update mask: only finite-Y cells are valid
+    mask_data = np.isfinite(y_vals).any(axis=(0, 1)).astype(np.float32)
+    xr.DataArray(
+        mask_data,
+        dims=["latitude", "longitude"],
+        coords={
+            "latitude": np.linspace(5.0, 30.0, h),
+            "longitude": np.linspace(45.0, 105.0, w),
+        },
+    ).to_zarr(region_dir / "mask.zarr", mode="w", consolidated=True)
+
+    return region_dir, n_days, n_channels, n_depths, h, w
+
+
 # ── Test: OceanEmbedDataset ──────────────────────────────────────────────
 
 class TestOceanEmbedDataset:
     """Tests for the core Dataset class."""
+
+    def test_dataset_normalization_fills_nan(self, fake_zarr_dir):
+        """Normalized inputs contain no NaN (land cells zero-filled).
+
+        Regression: real surface inputs have NaN at land cells. A conv net
+        spreads NaN to the whole output, killing the gradient. After z-score
+        normalization, NaN must be filled so the model only sees finite data.
+        """
+        region_dir, n_days, n_channels, _, h, w = fake_zarr_dir
+        # Inject NaN land cells into X (bottom-right block)
+        X = xr.open_zarr(region_dir / "X.zarr")["__xarray_dataarray_variable__"]
+        x_vals = X.values.copy()
+        x_vals[:, :, h // 2 :, w // 2 :] = np.nan
+        xr.DataArray(
+            x_vals,
+            dims=["time", "channel", "latitude", "longitude"],
+            coords={
+                "time": np.arange(n_days),
+                "channel": np.arange(n_channels),
+                "latitude": np.linspace(5.0, 30.0, h),
+                "longitude": np.linspace(45.0, 105.0, w),
+            },
+        ).to_zarr(region_dir / "X.zarr", mode="w", consolidated=True)
+
+        ds = OceanEmbedDataset(region_dir, temporal_window=7, normalize=True)
+        x, y, mask = ds[0]
+        assert not torch.isnan(x).any(), "normalized X must be finite"
 
     def test_dataset_length(self, fake_zarr_dir):
         """Dataset length accounts for temporal window (T=7)."""
@@ -296,3 +366,39 @@ class TestTrainer:
         history = trainer.train(epochs=100)
         # Should stop before 100 epochs
         assert len(history["train_loss"]) < 100
+
+    def test_trainer_finite_loss_with_nan_targets(self, fake_zarr_dir_with_nan):
+        """Trainer loss stays finite when targets contain NaN cells.
+
+        Real GLORYS has ~37% NaN target cells (land + shallow coastal gaps
+        below 5m). The loss must ignore invalid cells via the mask, not
+        propagate NaN into gradients.
+        """
+        from oceanembed.models.reconstruction_net import OceanEmbedNet
+
+        region_dir, _, _, _, _, _ = fake_zarr_dir_with_nan
+        train_loader, val_loader = create_dataloaders(
+            region_dir, temporal_window=7, batch_size=4, val_fraction=0.3
+        )
+        model = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        trainer = Trainer(model=model, train_loader=train_loader, val_loader=val_loader)
+        history = trainer.train(epochs=1)
+        assert all(np.isfinite(v) for v in history["train_loss"])
+        assert all(np.isfinite(v) for v in history["val_loss"])
+
+    def test_trainer_validate_metrics_finite_with_nan(self, fake_zarr_dir_with_nan):
+        """Validate() RMSE/bias metrics are finite with NaN targets."""
+        from oceanembed.models.reconstruction_net import OceanEmbedNet
+
+        region_dir, _, _, _, _, _ = fake_zarr_dir_with_nan
+        train_loader, val_loader = create_dataloaders(
+            region_dir, temporal_window=7, batch_size=4, val_fraction=0.3
+        )
+        model = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        trainer = Trainer(model=model, train_loader=train_loader, val_loader=val_loader)
+        val_loss, metrics = trainer.validate()
+        assert np.isfinite(val_loss)
+        assert np.isfinite(metrics["rmse"])
+        assert np.isfinite(metrics["bias"])
+        for d in range(15):
+            assert np.isfinite(metrics[f"rmse_depth_{d}"]), f"depth {d} RMSE non-finite"

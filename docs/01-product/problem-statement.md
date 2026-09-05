@@ -13,6 +13,9 @@
 | Organization | Ministry of Earth Sciences (MoES) | LOCKED |
 | Department | Indian National Centre for Ocean Information Services (INCOIS) | LOCKED |
 | Category | Software | LOCKED |
+| Official Theme | Disaster Management (LOCKED: official SIH portal authority; secondary mirrors list "Space Technology" — official site prevails) | LOCKED |
+| Competition Context | High Crowding (~500 competitor teams, 5 peer problem statements in ocean/space cluster). Edge requires deep scientific validity, independent ARGO validation, uncertainty, and physics-aware constraints rather than a generic dashboard. | CONFIRMED |
+| Reference Analysis URL | https://www.codehuntersacademy.com/sih-2026-ps#SIH26066 | CONFIRMED |
 
 ## Problem summary (normalized)
 

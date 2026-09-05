@@ -23,7 +23,11 @@ from pathlib import Path
 _project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_project_root / "data-engineering" / "src"))
 
-from oceanembed_data.catalog import DatasetCatalog, CANONICAL_INPUT_CHANNELS
+from oceanembed_data.catalog import (
+    DatasetCatalog,
+    CANONICAL_INPUT_CHANNELS,
+    GLORYS_DOWNLOAD_MAX_DEPTH_M,
+)
 from oceanembed_data.copernicus import CopernicusClient
 from oceanembed_data.regions import RegionRegistry
 
@@ -166,6 +170,11 @@ def main():
         help="Months per download chunk (default: 3)",
     )
     parser.add_argument(
+        "--skip-inputs",
+        action="store_true",
+        help="Skip surface input downloads (re-download GLORYS only)",
+    )
+    parser.add_argument(
         "--skip-glorys",
         action="store_true",
         help="Skip GLORYS target download",
@@ -193,22 +202,23 @@ def main():
 
     # Download all inputs
     all_results = []
-    for channel in CANONICAL_INPUT_CHANNELS:
-        entry = catalog.entries.get(channel)
-        if entry is None:
-            logger.warning("Channel '%s' not in catalog — skipping", channel)
-            continue
+    if not args.skip_inputs:
+        for channel in CANONICAL_INPUT_CHANNELS:
+            entry = catalog.entries.get(channel)
+            if entry is None:
+                logger.warning("Channel '%s' not in catalog — skipping", channel)
+                continue
 
-        results = download_dataset(
-            client=client,
-            catalog_entry=entry,
-            region_bounds=region,
-            start_date=args.start,
-            end_date=args.end,
-            output_dir=output_dir,
-            chunk_months=args.chunk_months,
-        )
-        all_results.extend(results)
+            results = download_dataset(
+                client=client,
+                catalog_entry=entry,
+                region_bounds=region,
+                start_date=args.start,
+                end_date=args.end,
+                output_dir=output_dir,
+                chunk_months=args.chunk_months,
+            )
+            all_results.extend(results)
 
     # Download GLORYS target
     if not args.skip_glorys:
@@ -229,7 +239,7 @@ def main():
                 start_date=chunk_start,
                 end_date=chunk_end,
                 minimum_depth=0.0,
-                maximum_depth=1000.0,
+                maximum_depth=GLORYS_DOWNLOAD_MAX_DEPTH_M,
                 output_dir=str(glorys_dir),
             )
             if result.success:

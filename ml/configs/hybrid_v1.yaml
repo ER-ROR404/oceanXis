@@ -1,0 +1,46 @@
+# --- hybrid_v1 experiment (ml/configs/hybrid_v1.yaml) ---
+# PRIMARY OceanEmbedNet training config (ADR-010 Stage 2: CNN + ConvLSTM).
+# Consumed by ml/scripts/train_colab_entry.py and colab/oceanembed_training.ipynb.
+# Mirrors config/model.yaml + config/training.yaml defaults unless overridden.
+
+experiment:
+  name: hybrid_v1
+  status: proposed
+
+model:
+  architecture: oceanembed_net          # CNN + ConvLSTM + depth decoder (ADR-010 PRIMARY)
+  variant: plain
+  in_channels: 7                        # LOCKED: SST, SSS, SSH, cur_U, cur_V, wind_U, wind_V
+  out_channels: 15                      # LOCKED: canonical 15 depths
+  uncertainty: true                     # NLL loss -> mu + log_var (spec v2.1 §11, §14)
+  convlstm_hidden: 128
+  convlstm_layers: 1
+  use_seasonal: true                    # day-of-year encoding (spec v2.1 §7)
+  use_spatial: true                     # lat/lon normalization
+
+data:
+  split_method: temporal_locked         # RULE 10 / ADR-007 — no random temporal split
+  normalization_source: training_only   # RULE 11
+  temporal_window: 7                    # T (spec v2.1 §5)
+  batch_size: 8
+  val_fraction: 0.2                     # last 20% of windowed samples = validation
+
+training:
+  loss: nll                              # Gaussian NLL (spec v2.1 §14, §15)
+  optimizer: adam
+  lr: 0.001
+  epochs: 100
+  seed: 42
+  early_stopping_patience: 15
+  hardware: colab-gpu                   # ADR-009: Colab T4 (local CPU: use --check / small epochs)
+
+evaluation:
+  metrics: [rmse, bias, correlation]
+  depth_wise: true
+  argo_validation: true                  # ARGO independent validation (ADR-012)
+  baseline_comparison: [climatology, persistence]
+
+artifacts:
+  register: true
+  manifest_schema: contracts/ml/checkpoint-manifest.schema.json
+  artifact_store: "Artifacts: Drive oceanembed/artifacts (RULE 13 — checkpoints never enter Git)"

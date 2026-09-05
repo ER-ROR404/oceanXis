@@ -15,6 +15,9 @@
 | ADR-006 | ARGO as independent validation | Accepted / LOCKED |
 | ADR-007 | Temporal data split (no random split) | Accepted |
 | ADR-008 | Regional MVP (Bay of Bengal / Arabian Sea) | Accepted |
+| ADR-011 | 3-Mode Product Vision (Map + Profile + Validation) | Accepted |
+| ADR-012 | Uncertainty & ARGO validation as core features (not optional) | Accepted |
+| ADR-013 | Physics-aware loss (vertical smoothness) as differentiator | Accepted |
 
 ## Status summary (from SYSTEM_MEMORY_DUMP.md §156)
 

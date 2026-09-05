@@ -44,6 +44,13 @@ CANONICAL_DEPTHS_M: list[float] = [
 # Canonical output variable name for GLORYS temperature.
 GLORYS_TEMP_VAR = "thetao"
 
+# GLORYS native vertical grid is irregular; the deepest canonical target is
+# 1000m. To linearly interpolate it we must download native levels BRACKETING
+# 1000m — GLORYS12 native levels in the 0-1500m band run 0.49 ... 902.3,
+# 1062.4, 1245.3, 1452.3 — so request at least 1500m (Rule: never extrapolate,
+# always bracket).
+GLORYS_DOWNLOAD_MAX_DEPTH_M = 1500.0
+
 
 @dataclass(frozen=True)
 class DatasetEntry:

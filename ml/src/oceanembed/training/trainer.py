@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from oceanembed.losses.nll_loss import GaussianNLLLoss
+from oceanembed.losses.nll_loss import GaussianNLLLoss, masked_nll_loss
 
 
 @dataclass
@@ -84,6 +84,7 @@ class Trainer:
 
         self.optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         self.loss_fn = GaussianNLLLoss()
+        self.masked_loss_fn = masked_nll_loss
         self.early_stopping = EarlyStopping(patience=early_stopping_patience)
         self.checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir else None
         self.best_model_state: dict | None = None
@@ -105,7 +106,7 @@ class Trainer:
 
             self.optimizer.zero_grad()
             mu, log_var = self.model(x_batch)
-            loss = self.loss_fn(mu, log_var, y_batch)
+            loss = self.masked_loss_fn(mu, log_var, y_batch, mask_batch)
             loss.backward()
             self.optimizer.step()
 
@@ -126,38 +127,52 @@ class Trainer:
         n_batches = 0
         all_mu = []
         all_y = []
+        all_masks = []
 
         for x_batch, y_batch, mask_batch in self.val_loader:
             x_batch = x_batch.to(self.device)
             y_batch = y_batch.to(self.device)
+            mask_batch = mask_batch.to(self.device)
 
             mu, log_var = self.model(x_batch)
-            loss = self.loss_fn(mu, log_var, y_batch)
+            loss = self.masked_loss_fn(mu, log_var, y_batch, mask_batch)
 
             total_loss += loss.item()
             n_batches += 1
             all_mu.append(mu.cpu())
             all_y.append(y_batch.cpu())
+            all_masks.append(mask_batch.cpu())
 
         val_loss = total_loss / max(n_batches, 1)
 
-        # Compute depth-wise metrics
+        # Compute depth-wise metrics over valid (masked) cells only
         metrics = {}
         if all_mu:
-            mu_cat = torch.cat(all_mu, dim=0)  # [N, 15, H, W]
-            y_cat = torch.cat(all_y, dim=0)    # [N, 15, H, W]
+            mu_cat = torch.cat(all_mu, dim=0)     # [N, 15, H, W]
+            y_cat = torch.cat(all_y, dim=0)       # [N, 15, H, W]
+            mask_cat = torch.cat(all_masks, dim=0)  # [N, H, W]
 
-            # Overall RMSE
-            rmse = torch.sqrt(((mu_cat - y_cat) ** 2).mean()).item()
+            diff = (mu_cat - y_cat) ** 2  # [N, 15, H, W]
+            # NaN safety: y may be NaN outside the mask; 0 * NaN = NaN,
+            # so zero out non-finite differences before masking.
+            diff = torch.nan_to_num(diff, nan=0.0)
+            # Convert mask to [N, 1, H, W] for broadcasting over channels
+            mask_expanded = mask_cat.unsqueeze(1)
+            n_valid = mask_expanded.sum().clamp(min=1.0)
+
+            # Overall RMSE over valid cells
+            rmse = torch.sqrt((diff * mask_expanded).sum() / n_valid).item()
             metrics["rmse"] = rmse
 
-            # Bias
-            bias = (mu_cat - y_cat).mean().item()
-            metrics["bias"] = bias
+            # Bias over valid cells
+            signed_diff = torch.nan_to_num(mu_cat - y_cat, nan=0.0)
+            bias = (signed_diff * mask_expanded).sum() / n_valid
+            metrics["bias"] = bias.item()
 
-            # Depth-wise RMSE
+            # Depth-wise RMSE over valid cells
             for d in range(mu_cat.shape[1]):
-                depth_rmse = torch.sqrt(((mu_cat[:, d] - y_cat[:, d]) ** 2).mean()).item()
+                depth_diff = diff[:, d]  # [N, H, W]
+                depth_rmse = torch.sqrt(depth_diff[mask_cat.bool()].mean()).item()
                 metrics[f"rmse_depth_{d}"] = depth_rmse
 
         return val_loss, metrics

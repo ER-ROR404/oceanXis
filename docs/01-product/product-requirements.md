@@ -33,9 +33,11 @@ Requirement IDs are referenced by acceptance criteria, tests, and PRs.
 ### FR-6 — Surface inputs summary (drill-down)
 - [ ] Profile response includes the surface input values at the selected cell.
 
-### FR-7 — Uncertainty (differentiator)
-- [ ] `PROPOSED` (not mandated). If implemented: temperature + uncertainty per depth.
-- [ ] Display calibrated uncertainty, not an invented "confidence %".
+### FR-7 — Uncertainty (CORE — upgraded from PROPOSED per ADR-012)
+- [ ] Temperature + uncertainty per depth for every prediction.
+- [ ] Display calibrated uncertainty (±X.X °C), not an invented "confidence %".
+- [ ] Confidence layer on map: user switches between Temperature / Confidence / Prediction Error views.
+- [ ] Uncertainty head: Gaussian heteroscedastic (μ, log σ²) trained with NLL loss.
 
 ### FR-8 — Model metadata
 - [ ] Response includes `model_version` (+ preprocessing/normalization versions where available).
@@ -46,10 +48,14 @@ Requirement IDs are referenced by acceptance criteria, tests, and PRs.
 - [ ] If a variable is unavailable: mark the channel unavailable (do not silently zero-fill).
 - [ ] Health checks must not trigger expensive external downloads.
 
-### FR-10 — Validation view
-- [ ] `PROPOSED`: predicted vs GLORYS profile comparison.
-- [ ] `PROPOSED`: predicted vs ARGO profile where independent observations exist (never fabricated).
+### FR-10 — Scientific Validation View (CORE — upgraded from PROPOSED per ADR-011/012)
+- [ ] Predicted vs GLORYS profile comparison (training reference).
+- [ ] Predicted vs ARGO profile where independent observations exist (never fabricated).
+- [ ] Per-profile RMSE / bias / correlation calculated and displayed.
 - [ ] Depth-wise RMSE / bias / correlation panel for the evaluated model.
+- [ ] Spatial prediction error map (green=low, yellow=moderate, red=high error).
+- [ ] ARGO coverage indicator (what % of region has independent validation).
+- [ ] **Mode 3 — Scientific Validation Mode**: judge-facing summary view with all metrics.
 
 ## Non-functional requirements
 

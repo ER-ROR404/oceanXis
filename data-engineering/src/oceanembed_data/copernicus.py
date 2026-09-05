@@ -105,11 +105,11 @@ class CopernicusClient:
         """
         logger.info("Describing dataset: %s", dataset_id)
         try:
+            # describe() in copernicusmarine >= 2.x is a metadata-only call and does
+            # not accept username/password credentials (they are only used by subset()).
             catalogue = copernicusmarine.describe(
                 dataset_id=dataset_id,
                 show_all_versions=show_all_versions,
-                username=self.username,
-                password=self.password,
             )
             # Convert to dict for easy consumption
             if hasattr(catalogue, "model_dump"):
@@ -218,11 +218,11 @@ class CopernicusClient:
             if actual_path and actual_path.exists():
                 try:
                     ds = xr.open_dataset(actual_path)
-                    dims = dict(ds.dims)
+                    sizes = dict(ds.sizes)
                     shape = (
-                        dims.get("time", dims.get("t", 1)),
-                        dims.get("latitude", dims.get("lat", 0)),
-                        dims.get("longitude", dims.get("lon", 0)),
+                        sizes.get("time", sizes.get("t", 1)),
+                        sizes.get("latitude", sizes.get("lat", 0)),
+                        sizes.get("longitude", sizes.get("lon", 0)),
                     )
                     ds.close()
                 except Exception as e:

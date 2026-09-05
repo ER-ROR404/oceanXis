@@ -124,6 +124,8 @@ class OceanEmbedDataset(Dataset):
         """Apply z-score normalization per channel.
 
         Uses training statistics only (spec v2.1 §17).
+        Land cells (NaN) are zero-filled after z-scoring so the conv encoder
+        never sees NaN (which would spread across the whole feature map).
         """
         x_norm = x.copy()
         for c in range(self.n_channels):
@@ -133,7 +135,8 @@ class OceanEmbedDataset(Dataset):
                 std = self.norm_stats[key]["std"]
                 if std > 1e-8:
                     x_norm[:, c] = (x[:, c] - mean) / std
-        return x_norm
+        # NaN -> 0 (neutral after z-score); mask handles land at loss time
+        return np.nan_to_num(x_norm, nan=0.0)
 
     def get_day_of_year(self, idx: int) -> int:
         """Get day-of-year for a sample (for seasonal encoding)."""

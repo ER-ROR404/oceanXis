@@ -214,6 +214,20 @@ class TestDepthDecoder:
         assert mu.shape[2] >= 2
         assert mu.shape[3] >= 2
 
+    def test_decoder_odd_grid_exact_size(self):
+        """Decoder produces EXACT target size for odd grids (BoB 69x81).
+
+        scale_factor-based upsampling (x8) of an odd grid floor-divides:
+        69//8 = 8 -> 8*8 = 64, but the real grid is 69 wide. The decoder
+        must interpolate to the exact target size.
+        """
+        decoder = DepthDecoder(out_channels=N_OUTPUT_CHANNELS)
+        latent_h, latent_w = 69 // 8, 81 // 8  # 8, 10
+        x = torch.randn(BATCH, 128, latent_h, latent_w)
+        mu, log_var = decoder(x, target_size=(69, 81))
+        assert mu.shape == (BATCH, N_OUTPUT_CHANNELS, 69, 81)
+        assert log_var.shape == (BATCH, N_OUTPUT_CHANNELS, 69, 81)
+
 
 # ── Test: Full OceanEmbedNet ──────────────────────────────────────────────
 
@@ -327,6 +341,35 @@ class TestOceanEmbedNet:
             x = torch.randn(1, T_WINDOW, N_INPUT_CHANNELS, h, w)
             mu, log_var = model(x)
             assert mu.shape == (1, N_OUTPUT_CHANNELS, h, w)
+
+    def test_real_bog_grid_odd_dims(self):
+        """Model produces EXACT BoB grid (69x81) — odd dimensions.
+
+        Regression: 3x MaxPool2d(2) then 3x scale_factor=2 Upsample maps
+        69x81 -> 64x80, breaking train loss vs. the true target grid.
+        """
+        model = OceanEmbedNet(
+            in_channels=N_INPUT_CHANNELS,
+            out_channels=N_OUTPUT_CHANNELS,
+            use_seasonal=False,
+            use_spatial=False,
+        )
+        x = torch.randn(1, T_WINDOW, N_INPUT_CHANNELS, 69, 81)
+        mu, log_var = model(x)
+        assert mu.shape == (1, N_OUTPUT_CHANNELS, 69, 81)
+        assert log_var.shape == (1, N_OUTPUT_CHANNELS, 69, 81)
+
+    def test_full_domain_odd_grid(self):
+        """Full North Indian Ocean domain (101x241) also odd — must match."""
+        model = OceanEmbedNet(
+            in_channels=N_INPUT_CHANNELS,
+            out_channels=N_OUTPUT_CHANNELS,
+            use_seasonal=False,
+            use_spatial=False,
+        )
+        x = torch.randn(1, T_WINDOW, N_INPUT_CHANNELS, 101, 241)
+        mu, log_var = model(x)
+        assert mu.shape == (1, N_OUTPUT_CHANNELS, 101, 241)
 
     def test_trivial_overfit(self):
         """Model can overfit a tiny batch (sanity check)."""

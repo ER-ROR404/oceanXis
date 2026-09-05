@@ -247,28 +247,36 @@ class DepthDecoder(nn.Module):
     """Depth decoder with separate μ and log_variance heads (spec v2.1 §10).
 
     Architecture:
-      [B, 128, H', W']
+      [B, in_channels, H', W']
         → Upsample + Conv 3×3 → 64 features
         → Upsample + Conv 3×3 → 32 features
+        → Exact-size interpolate to target H x W (handles odd grids)
         → μ head: Conv 1×1 → 15 channels
         → log_var head: Conv 1×1 → 15 channels
+
+    The final upsample interpolates to the exact target spatial size.
+    Without a target size it falls back to scale_factor=2 for backwards
+    compatibility with synthetic even grids.
     """
 
-    def __init__(self, out_channels: int = 15) -> None:
+    def __init__(self, in_channels: int = 128, out_channels: int = 15) -> None:
         super().__init__()
-        self.decoder = nn.Sequential(
-            # Upsample stage 1: H'/8 -> H'/4
-            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
-            nn.Conv2d(128, 64, kernel_size=3, padding=1),
+        # Stage 1: H'/8 -> H'/4
+        self.up1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+        self.block1 = nn.Sequential(
+            nn.Conv2d(in_channels, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            # Upsample stage 2: H'/4 -> H'/2
-            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+        )
+        # Stage 2: H'/4 -> H'/2
+        self.up2 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+        self.block2 = nn.Sequential(
             nn.Conv2d(64, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
-            # Upsample stage 3: H'/2 -> H'
-            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+        )
+        # Stage 3: H'/2 -> exact H x W (interpolate in forward), then conv at full res
+        self.block3 = nn.Sequential(
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
@@ -277,17 +285,34 @@ class DepthDecoder(nn.Module):
         self.mu_head = nn.Conv2d(32, out_channels, kernel_size=1)
         self.log_var_head = nn.Conv2d(32, out_channels, kernel_size=1)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        x: torch.Tensor,
+        target_size: tuple[int, int] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Decode to temperature + uncertainty.
 
         Args:
             x: [B, 128, H', W'] latent features.
+            target_size: Exact (H, W) spatial size to interpolate to.
+                Required for odd grids (real regions) where scale_factor
+                upsampling cannot reproduce the input dimensions.
 
         Returns:
             mu: [B, out_channels, H, W] predicted temperature.
             log_var: [B, out_channels, H, W] raw log-variance.
         """
-        features = self.decoder(x)
+        features = self.block1(self.up1(x))
+        features = self.block2(self.up2(features))
+        if target_size is not None:
+            features = torch.nn.functional.interpolate(
+                features, size=target_size, mode="bilinear", align_corners=False
+            )
+        else:
+            features = torch.nn.functional.interpolate(
+                features, scale_factor=2, mode="bilinear", align_corners=False
+            )
+        features = self.block3(features)
         mu = self.mu_head(features)
         log_var = self.log_var_head(features)
         return mu, log_var
@@ -350,7 +375,10 @@ class OceanEmbedNet(nn.Module):
         )
 
         # Depth decoder
-        self.decoder = DepthDecoder(out_channels=out_channels)
+        self.decoder = DepthDecoder(
+            in_channels=convlstm_hidden,
+            out_channels=out_channels,
+        )
 
     def forward(
         self,
@@ -399,6 +427,7 @@ class OceanEmbedNet(nn.Module):
         temporal_out = self.temporal(temporal_input)  # [B, 128, H', W']
 
         # Decode to temperature + uncertainty
-        mu, log_var = self.decoder(temporal_out)
+        # Pass exact spatial size so odd grids (69x81 BoB, 101x241 domain) match inputs
+        mu, log_var = self.decoder(temporal_out, target_size=(H, W))
 
         return mu, log_var

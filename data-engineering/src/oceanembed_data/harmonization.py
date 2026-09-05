@@ -141,31 +141,48 @@ def harmonize_glorys_target(
     """Regrid GLORYS temperature to canonical 15-depth, 0.25° grid.
 
     Steps:
-    1. Select 15 canonical depths from GLORYS's 35 native levels
-    2. Regrid spatially to 0.25° grid
+    1. Linearly interpolate vertically from native levels onto the 15
+       canonical depths. GLORYS's native vertical grid is irregular —
+       nearest-level selection mislabels values by up to ~57m (e.g. 700m
+       canonical from a 643.6m native level). Interpolation is exact.
+       The 0m canonical depth maps to the shallowest native level
+       (GLORYS's top model level ≈ surface).
+    2. Require a native level deeper than the deepest canonical depth
+       (1000m) so interpolation is bracketed — never extrapolate.
+    3. Regrid spatially to 0.25° grid.
 
     Args:
         ds: Open xarray Dataset with thetao variable.
         region: Target geographic bounds.
 
     Returns:
-        DataArray of shape [time, depth=15, lat, lon] at 0.25°.
+        DataArray of shape [time, depth=15, lat, lon] at 0.25°, with the
+        depth coordinate exactly CANONICAL_DEPTHS_M.
     """
     thetao = ds["thetao"]
 
-    # Step 1: Select canonical depths
-    depth_indices = select_canonical_depths(ds.depth.values)
-    selected_depths = ds.depth.values[depth_indices]
-    thetao = thetao.isel(depth=depth_indices)
+    native_depths = np.asarray(ds.depth.values, dtype=float)
+    deepest_canonical = float(CANONICAL_DEPTHS_M[-1])
+    if native_depths.max() < deepest_canonical:
+        raise ValueError(
+            f"GLORYS native depth grid max {native_depths.max():.1f}m is "
+            f"shallower than the deepest canonical target {deepest_canonical}m. "
+            "Download with GLORYS_DOWNLOAD_MAX_DEPTH_M (>=1500m) so the "
+            "1000m target is bracketed by native levels."
+        )
+
+    # Step 1: vertical linear interpolation onto canonical depths.
+    target_depths = np.asarray(CANONICAL_DEPTHS_M, dtype=float)
+    # 0m (surface) maps to the top native level — no extrapolation above it.
+    interp_depths = np.clip(target_depths, native_depths.min(), native_depths.max())
+    thetao = thetao.interp(depth=interp_depths, method="linear")
+    # Restore the exact canonical depth coordinate (clipped 0m -> 0.49m value).
+    thetao = thetao.assign_coords(depth=target_depths)
 
     logger.info(
-        "Selected %d canonical depths from %d native levels",
-        len(depth_indices),
-        len(ds.depth.values),
-    )
-    logger.info(
-        "Canonical depths (nearest): %s",
-        [f"{d:.1f}m" for d in selected_depths],
+        "Interpolated %d native levels -> %d canonical depths (linear)",
+        len(native_depths),
+        len(target_depths),
     )
 
     # Step 2: Regrid spatially
