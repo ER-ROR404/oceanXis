@@ -4,38 +4,41 @@
 
 **Phase 3.3 DONE (partially)** — Real data pipeline activated + critical neural training bugs fixed.
 
-### Critical fixes this session (all TDD, RED→GREEN)
-1. **DepthDecoder odd-grid bug** — model output 64×80 for real BoB grid 69×81 (3× MaxPool2d+scale×8). Fixed: exact-size interpolate in final decoder stage. 3 regression tests (`test_real_bog_grid_odd_dims`, `test_full_domain_odd_grid`, `test_decoder_odd_grid_exact_size`).
-2. **NaN targets poison training** — GLORYS is 37% NaN (land+shallow). Unmasked `GaussianNLLLoss` → NaN loss → NaN gradients (0×NaN in autograd backward). Fixed: Trainer now uses `masked_nll_loss` (mask-aware, target sanitized with `torch.where(mask.bool(), target, 0)` BEFORE computing NLL), validate() metrics masked+NaN-safe. 5 new tests.
-3. **NaN inputs spread through conv** — X land cells NaN → mu 100% NaN → learning signal 0. Fixed: `_normalize_x` zero-fills NaN after z-score (0 = neutral land). 1 new test.
-4. **Copernicus describe() bug** — v2.x API rejects username/password in describe(). Fixed + 11 tests.
-5. **train_colab_entry.py** — real training wired (run_training, --data-dir). 6 tests.
-6. **build_training_dataset.py** — excludes `_(1).nc` dupes + partial writes. 10 tests.
-
 ### Data status
 - Multi-day Copernicus download (PID-portion) launched: **2-year BoB 2022-01-01→2023-12-31**, all 8 datasets, 3-month chunks.
 - Completed: SST, SSS, SSH, current_U, current_V, wind_U, wind_V (10 files each).
-- In progress at end of session: **GLORYS temperature ~4/9 chunks** (each ~311MB, ~10 min each; copernicusmarine 2.4.1 with S3, transient connection-pool warnings are benign).
-- Log: `/tmp/opencode/download_2022_2023.log`. Process: `setsid nohup python scripts/download_historical.py --region bay_of_bengal --start 2022-01-01 --end 2023-12-31 --chunk-months 3`.
+- **GLORYS re-download in progress (v2)**: v1 was capped at `maximum_depth=1000` → native levels only reached 902.34m, so the 1000m canonical target silently used 902m data. Fixed via `GLORYS_DOWNLOAD_MAX_DEPTH_M=1500` (contract constant) + vertical interpolation in `harmonize_glorys_target`. v2 uses `--skip-inputs` (only GLORYS, ~9 chunks × ~10min). Log: `/tmp/opencode/download_glorys_v2.log`.
 - Existing tensors in `data/tensors/bay_of_bengal/` are the OLD 1-day proof (2024-06-01). MUST be rebuilt when download completes.
+
+**IMPORTANT — GLORYS depth contract (fixed this session):**
+- GLORYS native vertical grid is irregular (0.49, 1.54, 2.6, …, 902.3, 1062.4, 1245.3, 1452.3m @ max_depth=1500).
+- `harmonize_glorys_target` now LINERALY INTERPOLATES to the exact 15 canonical depths (0, 5, 10, …, 1000m). 0m maps to the shallowest native level (top model level ≈ surface).
+- It now RAISES `ValueError` if the native grid can't bracket 1000m — never extrapolate (SMD Rule 1).
+- Old nearest-neighbor selection was WRONG (offset targets up to 57m: 700m←643.6m); removed from the harmonize path.
 
 ### Test status
 ```
-158 tests passing (77 ML + 81 data-engineering)
-├── ml/tests/test_nll_loss.py                12/12  (masked loss NaN-safe, 3D mask support)
+164 tests passing (83 ML + 81 data-engineering)
+├── ml/tests/test_nll_loss.py                14/14  (masked loss: NaN targets, NaN at valid-cell depths, 3D mask)
 ├── ml/tests/test_reconstruction_net.py      29/29  (odd-grid exact-size decoder)
 ├── ml/tests/test_training_pipeline.py       19/19  (NaN train/val, masked metrics)
 ├── ml/tests/test_train_colab_entry.py        6/6   (real training entry)
-└── data-engineering/tests/                  81 tests (copernicus 11 + build_script 10 + rest)
+├── data-engineering/test_harmonization.py   26/26  (+5 vertical interpolation RED→GREEN)
+├── data-engineering/test_copernicus.py      13/13  (describe() v2.x fix + GLORYS depth contract)
+└── data-engineering/test_build_script.py    10/10  (find_nc_files cleanup)
 ```
 
----
-
-## Immediate next steps (in order)
+## Critical fixes this session (TDD, RED→GREEN)
+1. **DepthDecoder odd-grid bug** — model output 64×80 for real BoB grid 69×81 (3× MaxPool2d→×8 can't reproduce odd dims). Fixed: exact-size interpolate in final decoder stage. 3 regression tests.
+2. **NaN targets/train collapse** — GLORYS is ~37% NaN (land+shelf+deep). Unmasked NLL → NaN loss → collapse to 0 (0×NaN in autograd backward). Fixed: `masked_nll_loss` effective mask = `mask AND finite(target)`, targets sanitized, used in train_epoch AND validate; metrics masked+NaN-safe.
+3. **GLORYS depth interpolation** — nearest-level selection off by up to 57m; now linear interpolation to exact canonical depths, ValueError if 1000m unbracketed. +5 tests.
+4. **GLORYS download depth** — `maximum_depth=1500` via contract constant `GLORYS_DOWNLOAD_MAX_DEPTH_M`. +1 test.
+5. Copernicus describe() v2.x fix (+11 tests); build-script duplicate/partial filtering (+10 tests); train_colab_entry real training (+6 tests).
 
 ### 1. Wait for GLORYS download (blocker)
-- Monitor: `pgrep -af download_historical` + `find data/processed/bay_of_bengal/glorys_temperature -name '*.nc' ! -name '*.nc.*' | wc -l` (expect 9)
-- When all 8 dirs have ~10 clean files and process exits → proceed.
+- Monitor: `pgrep -af download_historical` + `ls data/processed/bay_of_bengal/glorys_temperature/ | grep -c '\.nc$'` (expect 9)
+- Verify depth range: file names must say `0.49-1452.25m` (NOT `0.49-902.34m`) — that confirms the depth fix is live.
+- When all 9 clean files exist and process exits → proceed.
 
 ### 2. Rebuild tensors (5 min)
 ```bash
