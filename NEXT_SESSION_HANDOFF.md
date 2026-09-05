@@ -35,33 +35,40 @@
 4. **GLORYS download depth** — `maximum_depth=1500` via contract constant `GLORYS_DOWNLOAD_MAX_DEPTH_M`. +1 test.
 5. Copernicus describe() v2.x fix (+11 tests); build-script duplicate/partial filtering (+10 tests); train_colab_entry real training (+6 tests).
 
-### 1. Wait for GLORYS download (blocker)
-- Monitor: `pgrep -af download_historical` + `ls data/processed/bay_of_bengal/glorys_temperature/ | grep -c '\.nc$'` (expect 9)
-- Verify depth range: file names must say `0.49-1452.25m` (NOT `0.49-902.34m`) — that confirms the depth fix is live.
-- When all 9 clean files exist and process exits → proceed.
+### 1. ✅ DONE — GLORYS download complete (9 succeeded, 0 failed)
+- All 9 files `0.49-1452.25m` (depth fix live), log `/tmp/opencode/download_glorys_v2.log`, no partial/temp files.
 
-### 2. Rebuild tensors (5 min)
+### 2. ✅ DONE — Tensors rebuilt (2-year BoB)
 ```bash
-source .venv/bin/activate
 python scripts/build_training_dataset.py --region bay_of_bengal --output-dir data/tensors
 ```
-- Expect X: [~730, 7, 69, 81], Y: [~730, 15, 69, 81], mask: [69, 81].
-- Verify no duplicate timestamps, normalization_stats.json regenerated from training-only window.
-- NOTE: legacy 2024-06-01 proof file remains in dirs; excluded via timestamp intersection (they won't match 2022-2023 range).
+- X: [730, 7, 69, 81], Y: [730, 15, 69, 81], mask: [69, 81] (5293/5589 valid cells).
+- Time range exactly 2022-01-01 → 2023-12-31 (730 days; both years non-leap).
+- NaN: X 22.8%, Y 37.3%; Y finite fraction 0.727 → 0.533 with depth (shelf cells).
+- normalization_stats.json: per-channel z-score, computed from training-only window (RULE 11).
+- **Tensor stores live at `data/tensors/bay_of_bengal/`** (X.zarr Y.zarr mask.zarr normalization_stats.json). NOTE: build script writes to `data/tensors/{region}` by default; if you pass `--output-dir data/tensors` it writes FLAT (did this once, moved into bay_of_bengal/).
+- NOTE: legacy 2024-06-01 proof nc files still in input dirs — excluded by `compute_common_times` (intersects ALL inputs AND target axis; new fix this session, 4 tests).
 
-### 3. Local CPU smoke train (10 min)
+### 3. ✅ DONE — Local CPU smoke train (regression gate PASSED)
 ```bash
-python ml/scripts/train_colab_entry.py --config ml/configs/hybrid_v1.yaml --data-dir data/tensors/bay_of_bengal --artifacts-dir /tmp/opencode/smoke --epochs 2 --check
+python ml/scripts/train_colab_entry.py --config /tmp/opencode/hybrid_v1_smoke.yaml --data-dir data/tensors/bay_of_bengal --artifacts-dir /tmp/opencode/smoke
+# smoke config = hybrid_v1.yaml with epochs: 2 (sed 100 -> 2)
 ```
-- Confirm finite decreasing loss (regression: previously NaN→0 collapse), best.pt/latest.pt, run_manifest.json.
+- train_loss 213.7 → 93.6 → 54.4 (3 epochs), val_loss 129.5 → 67.7 → 43.9 — **all finite, decreasing** (NaN-collapse regression gate passed).
+- Y is raw Kelvin (~300K), X is z-scored → loss magnitudes look large; that's expected scale, not a bug. Deep depths (500-1000m) RMSE 3-5K, surface ~22K at epoch 2.
+- NOTE: `--epochs N` is NOT a CLI arg (errors) — epochs come from config `training.epochs`.
 
-### 4. Commit + push
-- Commit today's work: copernicus fix+tests, build-script filter+tests, DepthDecoder odd-grid fix+tests, masked-loss Trainer fix+tests, train_colab_entry wiring+tests, hybrid_v1.yaml, notebook.
-- Update SYSTEM_MEMORY_DUMP.md + CHANGELOG.
+### 4. ✅ DONE — Committed (3 commits this session)
+- `7ac1ec7` fix: GLORYS vertical interpolation + NaN-safe masked NLL + download depth contract
+- `2b76d5a` docs: handoff update
+- `7f94228` fix: tensor common-time axis must include GLORYS target days
+- 168 tests passing (83 ML + 85 data-engineering).
 
-### 5. Colab T4 full training (2-4 h)
+### 5. Colab T4 full training (2-4 h) — NEXT BLOCKER
 - Open `colab/oceanembed_training.ipynb`; upload `data-engineering.tar.gz` of tensors to Drive; Cell 6 trains with `ml/configs/hybrid_v1.yaml`.
 - Target: 100 epochs, convlstm_hidden=128, batch 8, lr 1e-3, patience 15, NLL loss.
+- To package tensors for Drive: `tar czf /tmp/opencode/tensors_bob.tar.gz -C data/tensors bay_of_bengal` (~need X+Y+mask+normalization_stats.json; check notebook cell 5 for expected layout).
+- Expect val_nll to start high (~130) and decrease; don't judge by absolute value (Kelvin targets).
 
 ### 6. ARGO validation + demo path (Phase 6-9)
 - ARGO holds out until after first GLORYS-validated checkpoint.
