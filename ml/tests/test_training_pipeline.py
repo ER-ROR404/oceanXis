@@ -405,6 +405,52 @@ class TestTrainer:
         assert len(history_resumed["train_loss"]) == 6
         assert history_resumed["train_loss"][:3] == history_first["train_loss"]
 
+    def test_trainer_resume_legacy_checkpoint_without_history(self, fake_zarr_dir, tmp_path):
+        """Resuming a pre-resume-feature checkpoint (epoch/model/optimizer/val_loss
+        only, no history/early_stopping/best_model_state keys) must still work:
+        history restarts empty, best loss restarts at inf, and training continues
+        from the checkpoint epoch. Guards real Colab checkpoints written before
+        the resume feature existed."""
+        from oceanembed.models.reconstruction_net import OceanEmbedNet
+
+        region_dir, _, _, _, _, _ = fake_zarr_dir
+        train_loader, val_loader = create_dataloaders(
+            region_dir, temporal_window=7, batch_size=4, val_fraction=0.3
+        )
+        model = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        legacy = Trainer(
+            model=model, train_loader=train_loader, val_loader=val_loader,
+            checkpoint_dir=tmp_path
+        )
+        train_loader_2, val_loader_2 = create_dataloaders(
+            region_dir, temporal_window=7, batch_size=4, val_fraction=0.3
+        )
+        model2 = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        trainer2 = Trainer(
+            model=model2, train_loader=train_loader_2, val_loader=val_loader_2,
+            checkpoint_dir=tmp_path
+        )
+        # Hand-write a legacy-format checkpoint (epoch 2, no new keys)
+        torch.save(
+            {
+                "epoch": 2,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": legacy.optimizer.state_dict(),
+                "val_loss": 1.23,
+            },
+            tmp_path / "legacy.pt",
+        )
+        start_epoch, history = trainer2.load_checkpoint(tmp_path / "legacy.pt")
+        assert start_epoch == 3
+        assert history == {"train_loss": [], "val_loss": []}
+        assert trainer2.early_stopping.best_loss == float("inf")
+        # Training continues from the legacy point (range(3, 5) = 2 epochs)
+        history_resumed = trainer2.train(epochs=5, resume_from=tmp_path / "legacy.pt")
+        assert len(history_resumed["train_loss"]) == 2
+        # Checkpoints written after resume are the NEW format (self-describing)
+        ck = torch.load(tmp_path / "latest.pt", weights_only=True, map_location="cpu")
+        assert "history" in ck and "early_stopping" in ck
+
     def test_trainer_resume_missing_checkpoint_fails(self, fake_zarr_dir, tmp_path):
         """Resuming from a nonexistent checkpoint fails fast."""
         from oceanembed.models.reconstruction_net import OceanEmbedNet
