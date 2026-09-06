@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from cachetools import TTLCache
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.api.v1.envelope import (
     available_channel_status,
@@ -29,6 +29,7 @@ from app.api.v1.validation import (
     validate_region,
 )
 from app.core.config import Settings
+from app.core.ratelimit import rate_limit_dependency
 from app.domain.regions import get_region
 from app.schemas.error import (
     DataNotAvailableError,
@@ -38,7 +39,7 @@ from app.schemas.error import (
 from app.services.cache import DemoCache
 from app.services.inference_client import InferenceClient
 
-router = APIRouter(tags=["ocean"])
+router = APIRouter(tags=["ocean"], dependencies=[Depends(rate_limit_dependency)])
 
 _ENVELOPE_TTL_SECONDS = 60.0
 _profile_cache: TTLCache[tuple, dict[str, Any]] = TTLCache(maxsize=256, ttl=_ENVELOPE_TTL_SECONDS)

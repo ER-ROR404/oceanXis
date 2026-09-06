@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from cachetools import TTLCache
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.api.v1.envelope import (
     available_channel_status,
@@ -24,6 +24,7 @@ from app.api.v1.envelope import (
 )
 from app.api.v1.validation import validate_date, validate_depth, validate_region
 from app.core.config import Settings
+from app.core.ratelimit import rate_limit_dependency
 from app.schemas.error import (
     DataNotAvailableError,
     InferenceFailedError,
@@ -32,7 +33,7 @@ from app.schemas.error import (
 from app.services.cache import DemoCache
 from app.services.inference_client import InferenceClient
 
-router = APIRouter(tags=["ocean"])
+router = APIRouter(tags=["ocean"], dependencies=[Depends(rate_limit_dependency)])
 
 # Route-level TTL cache of cooked map payloads (the client has its own raw
 # cache; this one decides the cached_data status). Keyed per region/date/depth.

@@ -420,6 +420,30 @@ payload for a real date (manual curl), no torch import anywhere under
 >   out of map.py — DRY, all map tests green.
 > - Testing: 32 ml + 103 backend (13 map + 15 cache + 11 profile + 3 client
 >   validation) green, backend coverage 95%, ruff clean.
+>
+> **STATUS: 3.3 COMPLETE (2026-09-06)** — rate limiting + security headers.
+> - Per-IP sliding-window rate limiter (`app/core/ratelimit.py`, pure class —
+>   deque of monotonic timestamps, pruned on each `allow()`; default 30 req /
+>   60 s window). `RateLimiter` is framework-free and unit-tested (9 tests:
+>   under-limit, over-limit, key independence, window expiry, oldest-expires-
+>   first, remaining count, never-negative, reset, defaults).
+> - FastAPI wiring: `rate_limit_dependency()` reads `X-Forwarded-For` first
+>   IP then `client.host`; raises `RateLimitError` when over budget. Applied
+>   ONLY to the inference routers (`/ocean/map`, `/ocean/profile`) via
+>   `APIRouter(dependencies=[...])` — health/metadata/version are NOT limited.
+> - 429 handler emits the contract `RATE_LIMITED` envelope (already in
+>   error.schema.json + error.py enum) + `Retry-After` header; security
+>   headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+>   `X-XSS-Protection: 0`, `Referrer-Policy`) are applied by middleware to
+>   EVERY response including error/429.
+> - Tests (13 API): security headers on 200/error/429, over-limit→429 envelope,
+>   Retry-After present, per-IP bucket separation (two X-Forwarded-For IPs),
+>   profile also limited, health NOT limited.
+> - Real-stack E2E: headers on `GET /health`; 31st `/ocean/map` → `RATE_LIMITED`
+>   + `retry-after: 60`; health unlimited; after `reset(ip)` the limiter
+>   recovers (next request passes the gate and reaches the honest 503
+>   `MODEL_NOT_LOADED` path when no model service / demo cache).
+> - Tests: 125 backend green, coverage 95%, ruff clean.
 
 **Step 3.1 — /ocean/map handler** (File: `backend/app/api/v1/routes/map.py`)
 - Action: validate region/date/depth (enums from config, NOT hardcoded);
