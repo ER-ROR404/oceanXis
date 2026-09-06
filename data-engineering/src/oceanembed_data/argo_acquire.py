@@ -74,6 +74,7 @@ def parse_index(text: str) -> list[IndexRow]:
     comment lines (``#``), the CSV header, and malformed lines.
     """
     rows: list[IndexRow] = []
+    dropped_empty_date = 0
     for line_no, line in enumerate(text.splitlines(), start=1):
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("file,"):
@@ -84,6 +85,12 @@ def parse_index(text: str) -> list[IndexRow]:
             continue
         try:
             file_, date_s = parts[0].strip(), parts[1].strip()
+            # Empty date field: normal GDAC condition (e.g. MEDS float
+            # blocks); such a row can never be selected into a validation
+            # window, so drop it silently instead of warning per row.
+            if not date_s:
+                dropped_empty_date += 1
+                continue
             row_date: date | None = None
             for fmt in ("%Y%m%d%H%M%S", "%Y%m%d"):
                 try:
@@ -102,6 +109,8 @@ def parse_index(text: str) -> list[IndexRow]:
             rows.append(IndexRow(file=file_, date=row_date, lat=lat, lon=lon))
         except (ValueError, TypeError):
             logger.warning("index line %d: skipping unparsable row", line_no)
+    if dropped_empty_date:
+        logger.info("index: dropped %d rows with empty date field", dropped_empty_date)
     return rows
 
 
@@ -318,7 +327,15 @@ def load_gdac_files(cache_dir: Path, rows: list[IndexRow]) -> list[dict]:
             logger.warning("missing GDAC file %s, skipping", path)
             continue
         try:
-            with xr.open_dataset(path) as ds:
+            # Disable CF time decoding: real GDAC files declare JULD units
+            # "days since 1950-01-01" which xarray would decode into
+            # datetime64[ns]; converting that back via float() produced
+            # "Python int too large to convert to C int" on every real
+            # profile (version-fragile across xarray/netCDF4 stacks).
+            # Keeping the raw days-since-1950 float matches the JULD_EPOCH
+            # convention used below. mask_and_scale stays enabled so
+            # _FillValue levels arrive as NaN.
+            with xr.open_dataset(path, decode_times=False, decode_timedelta=False) as ds:
                 entry = parse_gdac_profile(ds, source_id=path.stem)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("failed to parse %s: %s", path, exc)
@@ -328,8 +345,7 @@ def load_gdac_files(cache_dir: Path, rows: list[IndexRow]) -> list[dict]:
         entry_date = date.fromisoformat(entry["date"])
         if abs((entry_date - row.date).days) > 1:
             logger.warning(
-                "profile %s: index date %s vs file date %s disagree by >1 day, "
-                "skipping",
+                "profile %s: index date %s vs file date %s disagree by >1 day, skipping",
                 entry["source_id"],
                 row.date,
                 entry_date,
@@ -339,9 +355,7 @@ def load_gdac_files(cache_dir: Path, rows: list[IndexRow]) -> list[dict]:
     return entries
 
 
-def write_profiles_json(
-    profiles: list[dict], out_path: Path, provenance: dict
-) -> Path:
+def write_profiles_json(profiles: list[dict], out_path: Path, provenance: dict) -> Path:
     """Write the flat profiles store consumed by the ARGO validator.
 
     The main file is the flat list exactly as ``evaluate_argo.py:load_profiles``

@@ -79,6 +79,31 @@ def _profile_ds(
     return ds
 
 
+def _realistic_profile_ds(
+    dasdate: date = date(2024, 6, 15),
+) -> xr.Dataset:
+    """Dataset carrying the CF attributes that real GDAC files declare.
+
+    Real Argo files declare ``JULD`` units ``days since 1950-01-01`` which
+    makes xarray's default CF decoder convert JULD to datetime64[ns] — the
+    trigger for the ``Python int too large to convert to C int`` overflow
+    when opening real profiles. This mirror ensures tests exercise that
+    code path (opening a real-format file).
+    """
+    ds = _profile_ds(
+        temps=[28.4, 28.2, 27.9],
+        pres=[4.9, 9.8, 99999.0],  # last level is fill-value-only
+        temp_qc=["1", "1", "4"],
+        pres_qc=["1", "1", "4"],
+        dasdate=dasdate,
+    )
+    ds["JULD"].attrs["units"] = "days since 1950-01-01 00:00:00 UTC"
+    ds["JULD"].attrs["conventions"] = "Relative julian days with decimal part (as parts of day)"
+    ds["PRES"].attrs["units"] = "decibar"
+    ds["TEMP"].attrs["units"] = "degree_Celsius"
+    return ds
+
+
 # --------------------------------------------------------------------------- #
 # Index parsing
 # --------------------------------------------------------------------------- #
@@ -128,6 +153,22 @@ class TestParseIndex:
         rows = parse_index(text)
         assert rows == []
 
+    def test_skips_empty_date_rows_silently(self, caplog) -> None:
+        # The real GDAC index contains rows with an EMPTY date field (normal
+        # condition, e.g. meds/ floats). They must be dropped without a
+        # per-row WARNING flood (Colab Cell A showed thousands of lines).
+        text = (
+            "file,date,latitude,longitude,ocean,profiler_type,institution,date_update\n"
+            "meds/4901199/profiles/D4901199_073.nc,,36.383,-58.658,A,865,ME,20251006180848\n"
+            "aoml/4903456/4903456_001.nc,20240615120000,8.51,88.19,I,846,AOML,20240616120000\n"
+        )
+        with caplog.at_level("WARNING"):
+            rows = parse_index(text)
+        assert len(rows) == 1
+        assert rows[0].file == "aoml/4903456/4903456_001.nc"
+        warnings = [r for r in caplog.records if r.levelno >= 30]
+        assert warnings == []
+
     def test_empty_input(self) -> None:
         assert parse_index("") == []
 
@@ -168,18 +209,14 @@ class TestSelectRows:
     def test_date_window_inclusive(self) -> None:
         rows = parse_index(INDEX_SAMPLE)
         # Date-only filter: 2024-09-01..2024-09-30 keeps row 2 only.
-        picked = select_rows(
-            rows, min_date=date(2024, 9, 1), max_date=date(2024, 9, 30)
-        )
+        picked = select_rows(rows, min_date=date(2024, 9, 1), max_date=date(2024, 9, 30))
         assert [r.file for r in picked] == [
             "meds/6902914/6902914_0123.nc",
         ]
 
     def test_disjoint_window_returns_empty(self) -> None:
         rows = parse_index(INDEX_SAMPLE)
-        picked = select_rows(
-            rows, min_date=date(2030, 1, 1), max_date=date(2030, 1, 2), **BOB
-        )
+        picked = select_rows(rows, min_date=date(2030, 1, 1), max_date=date(2030, 1, 2), **BOB)
         assert picked == []
 
     def test_none_filters_pass_everything(self) -> None:
@@ -197,9 +234,7 @@ class TestComputeValidationWindow:
         # 2-year daily axis exactly like the BoB tensor store.
         start = np.datetime64("2024-01-01")
         time = start + np.arange(730, dtype="timedelta64[D]")
-        val_start, val_end = compute_validation_window(
-            time, temporal_window=7, val_fraction=0.2
-        )
+        val_start, val_end = compute_validation_window(time, temporal_window=7, val_fraction=0.2)
         # n_samples = 730 - 7 + 1 = 724; n_val = int(724 * 0.2) = 144;
         # n_train = 580; first val target day index = 580 + 6 = 586.
         expected_start = _np_day(time[586])
@@ -291,9 +326,7 @@ class TestParseGdacProfile:
 
 
 class TestLoadGdacFiles:
-    def test_loads_matching_files_skips_date_mismatch(
-        self, tmp_path: Path
-    ) -> None:
+    def test_loads_matching_files_skips_date_mismatch(self, tmp_path: Path) -> None:
         good = _profile_ds(dasdate=date(2024, 6, 15))
         off = _profile_ds(dasdate=date(2024, 6, 12))
         (tmp_path / "dac" / "aoml" / "4903456").mkdir(parents=True)
@@ -303,12 +336,44 @@ class TestLoadGdacFiles:
         off.to_netcdf(bad_dir / "4903457_002.nc")
 
         rows = [
-            IndexRow(file="aoml/4903456/4903456_001.nc", date=date(2024, 6, 15), lat=8.51, lon=88.19),
+            IndexRow(
+                file="aoml/4903456/4903456_001.nc", date=date(2024, 6, 15), lat=8.51, lon=88.19
+            ),
             # Index date 2024-06-15 vs JULD 2024-06-12 -> 3 days off -> skipped.
-            IndexRow(file="aoml/4903457/4903457_002.nc", date=date(2024, 6, 15), lat=8.51, lon=88.19),
+            IndexRow(
+                file="aoml/4903457/4903457_002.nc", date=date(2024, 6, 15), lat=8.51, lon=88.19
+            ),
         ]
         entries = load_gdac_files(tmp_path, rows)
         assert [e["source_id"] for e in entries] == ["4903456_001"]
+
+    def test_loads_real_format_file_with_cf_units_attr(self, tmp_path: Path) -> None:
+        # Regression: real GDAC files declare JULD units "days since
+        # 1950-01-01" which makes xarray's default CF decoder convert JULD
+        # to datetime64[ns]; the old float()/timedelta() pipeline then
+        # raised "Python int too large to convert to C int" on every real
+        # profile (reproduced on Colab + locally). Opening with time decoding
+        # disabled must keep JULD as raw days-since-1950 and parse cleanly.
+        prof = _realistic_profile_ds(dasdate=date(2024, 6, 15))
+        d = tmp_path / "dac" / "aoml" / "4903456"
+        d.mkdir(parents=True)
+        prof.to_netcdf(d / "4903456_001.nc")
+        rows = [
+            IndexRow(
+                file="aoml/4903456/4903456_001.nc",
+                date=date(2024, 6, 15),
+                lat=8.51,
+                lon=88.19,
+            )
+        ]
+        entries = load_gdac_files(tmp_path, rows)
+        assert len(entries) == 1
+        e = entries[0]
+        assert e["source_id"] == "4903456_001"
+        assert e["date"] == "2024-06-15"
+        # Fill-value level (QC 4 AND _FillValue) must never appear.
+        assert e["depths_m"] == pytest.approx([4.9, 9.8])
+        assert e["temps_c"] == pytest.approx([28.4, 28.2])
 
 
 class TestWriteProfilesJson:
