@@ -120,6 +120,20 @@ class OceanEmbedDataset(Dataset):
 
         return x_tensor, y_tensor, mask_tensor
 
+    def build_window(self, t: int) -> torch.Tensor:
+        """Input window ending at time index ``t`` (consumes training contract).
+
+        Equivalent to ``__getitem__(t - T + 1)[0]`` — used by inference-time
+        consumers (e.g. ARGO validation) that address days directly rather
+        than sample indices.
+        """
+        if t < self.T - 1 or t >= self.n_time:
+            raise IndexError(f"t={t} out of range for T={self.T}, n_time={self.n_time}")
+        x_slice = self.X.isel(time=slice(t - self.T + 1, t + 1)).values  # [T, C, H, W]
+        if self.normalize and self.norm_stats:
+            x_slice = self._normalize_x(x_slice)
+        return torch.from_numpy(x_slice.copy()).float()
+
     def _normalize_x(self, x: np.ndarray) -> np.ndarray:
         """Apply z-score normalization per channel.
 
