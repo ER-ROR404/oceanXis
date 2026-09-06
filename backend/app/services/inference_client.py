@@ -204,12 +204,24 @@ def _validate_health_body(body: Any) -> None:
 
 
 def _validate_predict_body(body: Any) -> None:
-    """Contract shape: {mu, log_var: [15][H*W] numeric-or-null, metadata strings}."""
+    """Contract shape: {mu, log_var: [15][H*W] numeric-or-null, latitude/longitude
+    grids, metadata strings}. The ocean-map route builds its coordinates from
+    these arrays — a grid mismatch is malformed, never silently guessed."""
     if not isinstance(body, dict):
         raise ValueError("prediction payload is not an object")
     expected = len(CANONICAL_DEPTHS)
-    _rows_of_numbers_or_null(body.get("mu"), expected_rows=expected)
+    rows = _rows_of_numbers_or_null(body.get("mu"), expected_rows=expected)
     _rows_of_numbers_or_null(body.get("log_var"), expected_rows=expected)
+    latitude = body.get("latitude")
+    longitude = body.get("longitude")
+    if not isinstance(latitude, list) or not isinstance(longitude, list):
+        raise ValueError("missing latitude/longitude grids")
+    if not latitude or not longitude:
+        raise ValueError("empty latitude/longitude grids")
+    if not all(_is_number(v) for v in latitude) or not all(_is_number(v) for v in longitude):
+        raise ValueError("non-numeric latitude/longitude value")
+    if len(rows[0]) != len(latitude) * len(longitude):
+        raise ValueError("grid dims mismatch: mu row length != len(lat) * len(lon)")
     for field in ("series_id", "date", "region", "model_version"):
         if not isinstance(body.get(field), str):
             raise ValueError(f"missing string field: {field}")

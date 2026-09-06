@@ -1,9 +1,77 @@
-"""Unit tests: demo cache (Phase 1 shape; Phase 4 wires real readers)."""
+"""Unit tests: demo cache readers (fallback_demo path, plan 3.1c)."""
 
 from __future__ import annotations
 
+import json
+
+import numpy as np
+import pytest
+
+from app.core.config import Settings
 from app.schemas.error import DataNotAvailableError
 from app.services.cache import DemoCache
+
+
+def write_demo_cache(
+    root,
+    *,
+    region: str = "bay_of_bengal",
+    date: str = "2024-01-10",
+    n_lat: int = 2,
+    n_lon: int = 3,
+    n_depths: int = 15,
+    depths_m: list | None = None,
+    offset: float = 0.0,
+) -> None:
+    """Build a minimal demo-cache dir matching the ml builder format.
+
+    Values = base + offset so tests can distinguish depth planes:
+    baseline surface plane is 20.0 + offset, deep plane is 5.0 + offset.
+    """
+    depths_m = depths_m or [
+        0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000,
+    ]
+    region_dir = root / region
+    region_dir.mkdir(parents=True, exist_ok=True)
+    lat = [10.0 + i for i in range(n_lat)]
+    lon = [88.0 + i for i in range(n_lon)]
+    (region_dir / "coordinates.json").write_text(
+        json.dumps(
+            {
+                "region": region,
+                "lat": lat,
+                "lon": lon,
+                "depths_m": depths_m,
+                "n_lat": n_lat,
+                "n_lon": n_lon,
+                "n_depths": n_depths,
+            }
+        )
+    )
+    mu = np.full((n_depths, n_lat, n_lon), 5.0 + offset, dtype=np.float32)
+    mu[0] = 20.0 + offset  # surface plane distinct
+    mu[0, 0, 1] = np.nan  # one land cell (surface)
+    np.savez(region_dir / f"{date}.npz", mu=mu, log_var=np.zeros_like(mu))
+    (root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "region": region,
+                "model_version": "hybrid_v1",
+                "checkpoint": "best.pt",
+                "epoch": 83,
+                "val_loss": 0.3715,
+                "trained_on": "2023-12-31",
+                "dates": [date],
+                "channel_status": {f"channel_{i}": "available" for i in range(7)},
+                "generated_at": "2024-01-01T00:00:00+00:00",
+            }
+        )
+    )
+
+
+def make_cache(root) -> DemoCache:
+    return DemoCache(settings=Settings(demo_cache_dir=str(root)))
 
 
 class TestDemoCache:
@@ -24,10 +92,56 @@ class TestDemoCache:
         except DataNotAvailableError:
             pass
 
-    def test_stub_readers_return_none(self, tmp_path) -> None:
-        """Phase 1: readers are stubs returning no fallback (Phase 4 fills)."""
+    def test_get_map_returns_none_when_dir_missing(self, tmp_path) -> None:
         cache = DemoCache.__new__(DemoCache)
         cache._settings = None
         cache._cache_dir = tmp_path / "does-not-exist"
-        assert cache.get_map("bay_of_bengal", "2022-01-01", 0) is None
-        assert cache.get_profile("bay_of_bengal", "2022-01-01", 10.0, 90.0) is None
+        assert cache.get_map("bay_of_bengal", "2024-01-10", 0) is None
+
+    def test_get_map_returns_none_for_unknown_date(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        assert cache.get_map("bay_of_bengal", "1999-01-01", 0) is None
+
+    def test_get_map_unknown_region_none(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        assert cache.get_map("atlantis", "2024-01-10", 0) is None
+
+    def test_get_map_surface_plane_values(self, tmp_path) -> None:
+        """2D [lat][lon] values at depth 0; land cell is null, never 0.0 (D9)."""
+        write_demo_cache(tmp_path, offset=1.0)
+        cache = make_cache(tmp_path)
+        payload = cache.get_map("bay_of_bengal", "2024-01-10", 0)
+        assert payload is not None
+        assert payload["region"] == "bay_of_bengal"
+        assert payload["date"] == "2024-01-10"
+        assert payload["channel"] == "temperature"
+        assert payload["depth"] == 0
+        assert payload["coordinates"] == {"latitude": [10.0, 11.0], "longitude": [88.0, 89.0, 90.0]}
+        assert payload["values"][0] == [21.0, None, 21.0]  # land stays null
+        assert payload["values"][1] == [21.0, 21.0, 21.0]
+
+    def test_get_map_deep_plane_selected_by_depth(self, tmp_path) -> None:
+        write_demo_cache(tmp_path, offset=2.0)
+        cache = make_cache(tmp_path)
+        payload = cache.get_map("bay_of_bengal", "2024-01-10", 1000)
+        assert payload is not None
+        assert all(row == [7.0, 7.0, 7.0] for row in payload["values"])
+
+    def test_get_map_metadata_honest(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        payload = cache.get_map("bay_of_bengal", "2024-01-10", 0)
+        assert payload is not None
+        meta = payload["metadata"]
+        assert meta["cached"] is True
+        assert meta["model_version"] == "hybrid_v1"
+        assert meta["timestamp"] == "2024-01-01T00:00:00+00:00"
+        assert "demo cache" in meta["data_source"].lower()
+
+    def test_get_map_depth_not_in_cache_raises_valueerror(self, tmp_path) -> None:
+        write_demo_cache(tmp_path, depths_m=[0, 5, 10, 20])
+        cache = make_cache(tmp_path)
+        with pytest.raises(ValueError):
+            cache.get_map("bay_of_bengal", "2024-01-10", 1000)

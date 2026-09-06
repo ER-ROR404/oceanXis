@@ -28,8 +28,11 @@ HEALTH_OK = {
 }
 
 PREDICT_OK = {
-    "mu": [[0.5, None, 1.0]] * 15,
-    "log_var": [[-1.0, None, 0.5]] * 15,
+    # 3x3 grid, flattened row-major (lat outer): each depth row has 9 cells.
+    "mu": [[0.5, None, 1.0, 2.0, 2.5, 3.0, 4.0, None, 5.0]] * 15,
+    "log_var": [[-1.0, None, 0.5, 0.2, -0.5, 1.0, -2.0, None, 0.0]] * 15,
+    "latitude": [10.0, 11.0, 12.0],
+    "longitude": [88.0, 89.0, 90.0],
     "series_id": "hybrid_v1-2023-06-15",
     "date": "2023-06-15",
     "region": "bay_of_bengal",
@@ -151,6 +154,34 @@ class TestPredictMap:
         body = make_client(handler).predict_map("bay_of_bengal", "2023-06-15")
         assert len(body["mu"]) == 15
         assert body["series_id"].startswith("hybrid_v1-")
+        # Validated surface: the response carries the grid used to build the
+        # ocean-map coordinates (3.1 requirement; never guessed).
+        assert body["latitude"] == [10.0, 11.0, 12.0]
+        assert body["longitude"] == [88.0, 89.0, 90.0]
+
+    def test_predict_map_missing_grid_coordinates_rejected(self) -> None:
+        """Phase 3: a /predict response without lat/lon grids cannot build the
+        ocean-map payload — treat as malformed (InferenceFailedError), never guess."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            bad = dict(PREDICT_OK)
+            bad.pop("latitude")
+            bad.pop("longitude")
+            return httpx.Response(200, json=bad)
+
+        with pytest.raises(InferenceFailedError):
+            make_client(handler).predict_map("bay_of_bengal", "2023-06-15")
+
+    def test_predict_map_grid_dimension_mismatch_rejected(self) -> None:
+        """mu rows are [H*W] flattened; H*W must equal len(lat)*len(lon)."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            bad = dict(PREDICT_OK)
+            bad["latitude"] = [10.0]  # would imply H*W == 1, but rows are length 3
+            return httpx.Response(200, json=bad)
+
+        with pytest.raises(InferenceFailedError):
+            make_client(handler).predict_map("bay_of_bengal", "2023-06-15")
 
     def test_predict_map_connect_error(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

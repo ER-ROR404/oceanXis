@@ -88,6 +88,19 @@ class TestPredict:
         assert len(body["mu"][0]) == 8 * 8  # H*W -> 64
         assert body["series_id"].startswith("hybrid_v1-")
 
+    def test_predict_response_is_grid_self_describing(self, server):
+        """Phase 3: backend builds ocean-map coordinates from this response —
+        must never guess the grid (RULE 6/7), so /predict reports lat/lon."""
+        resp = server.post("/predict", json={"region": "bay_of_bengal", "date": "2024-01-12"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "latitude" in body and "longitude" in body
+        assert len(body["latitude"]) == 8  # H from the fixture grid
+        assert len(body["longitude"]) == 8  # W
+        # Contract layout invariant: each depth row is exactly H*W (lat outer).
+        assert len(body["mu"][0]) == len(body["latitude"]) * len(body["longitude"])
+        assert all(isinstance(v, (int, float)) for v in body["latitude"])
+
     def test_predict_unknown_region_404(self, server):
         resp = server.post("/predict", json={"region": "atlantis", "date": "2024-01-12"})
         assert resp.status_code == 404

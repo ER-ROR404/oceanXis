@@ -149,9 +149,13 @@ def create_app() -> FastAPI:
             )
         # Flatten [D,H,W] -> [D, H*W] row-major (lat outer; contracts/ml layout)
         # NaN land cells serialize to null in JSON (contract allows null).
+        # Report the grid so the backend builds ocean-map coordinates from the
+        # same store that produced mu (never guessed, RULE 6/7).
         return {
             "mu": [layer.reshape(-1).tolist() for layer in mu],
             "log_var": [layer.reshape(-1).tolist() for layer in log_var],
+            "latitude": [float(v) for v in svc.lats],
+            "longitude": [float(v) for v in svc.lons],
             "series_id": f"hybrid_v1-{req.date}",
             "date": req.date,
             "region": req.region,

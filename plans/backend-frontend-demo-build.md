@@ -388,6 +388,24 @@ payload for a real date (manual curl), no torch import anywhere under
 
 ### PHASE 3 — Map/profile routes + envelope + caching + rate limit (backend)
 
+> **STATUS: 3.1 COMPLETE (2026-09-06)** — `/ocean/map` shipped.
+> - **Contract update (C2, in-PR):** the ml `/predict` RPC now returns
+>   `latitude`/`longitude` grids (required in `contracts/ml/inference-rpc.schema.json`)
+>   so the backend builds ocean-map `coordinates` from the ml service's own grid
+>   — never guessed (RULE 6/7). Backend client re-validates lat/lon + `H*W`
+>   cross-check (malformed → `InferenceFailedError`).
+> - `DemoCache.get_map` real reader (npz + coordinates.json + manifest,
+>   NaN→null, 15-depth slice) — the `fallback_demo` path now works.
+> - Status taxonomy live-verified on the real stack: `model_prediction`
+>   (69×81 grids, 296 land nulls), `cached_data` (byte-identical replay),
+>   `fallback_demo` (server killed → values from artifacts/demo_cache),
+>   unavailable (503 `MODEL_NOT_LOADED`, details.fallback=demo cache miss).
+> - Testing: 32 ml (was 31) + 86 backend (was 63) green, backend coverage 94%,
+>   ruff clean, every 200 envelope validated against prediction.schema.json +
+>   ocean-map.schema.json (cross-file refs now resolve in the test harness).
+> - **Next: 3.2 `/ocean/profile`** (shared envelope helper ready; profile RPC
+>   + nearest-cell semantics already live ml-side from Phase 2).
+
 **Step 3.1 — /ocean/map handler** (File: `backend/app/api/v1/routes/map.py`)
 - Action: validate region/date/depth (enums from config, NOT hardcoded);
   InferenceClient.predict_map → slice `depth` plane → build

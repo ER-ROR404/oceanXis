@@ -4,17 +4,27 @@
   "title": "Inference RPC",
   "description": "Wire format between the ml-inference HTTP service (:8080) and the backend InferenceClient. Versioned interface — changes require a contract update (RULE 6/CONTRIBUTING).",
   "type": "object",
-  "required": ["mu", "log_var", "series_id", "date", "region", "model_version"],
+  "required": ["mu", "log_var", "series_id", "date", "region", "model_version", "latitude", "longitude"],
   "properties": {
     "mu": {
       "type": "array",
-      "description": "Predicted temperature mean per depth, flattened [depth][lon*lat] row-major (lat outer). null encodes land cells.",
+      "description": "Predicted temperature mean per depth, flattened [depth][lat*lon] row-major (lat outer). null encodes land cells. len(mu[d]) == len(latitude) * len(longitude).",
       "items": { "type": "array", "items": { "type": ["number", "null"] } }
     },
     "log_var": {
       "type": "array",
       "description": "Predicted log-variance per depth, same layout as mu.",
       "items": { "type": "array", "items": { "type": ["number", "null"] } }
+    },
+    "latitude": {
+      "type": "array",
+      "description": "Ascending latitude centers of the predicted grid (length matches mu's first spatial axis; the backend builds ocean-map coordinates from this — never guessed).",
+      "items": { "type": "number" }
+    },
+    "longitude": {
+      "type": "array",
+      "description": "Longitude centers of the predicted grid (length matches mu's second spatial axis).",
+      "items": { "type": "number" }
     },
     "series_id": {
       "type": "string",
