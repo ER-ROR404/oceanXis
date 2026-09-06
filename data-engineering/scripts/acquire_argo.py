@@ -45,8 +45,12 @@ from oceanembed_data.argo_acquire import (  # noqa: E402
 )
 from oceanembed_data.regions import RegionRegistry  # noqa: E402
 
-DEFAULT_GDAC_ROOT = "https://data-argo.ifremer.fr/argo"
+DEFAULT_GDAC_ROOT = "https://data-argo.ifremer.fr/"
 INDEX_NAME = "ar_index_global_prof.txt"
+
+# Index format 2.0 (2026): the index lives at the GDAC root; profile file
+# paths in the index are relative to the GDAC "/dac" FTP root, so profile
+# URLs are root + "dac/" + row.file.
 
 
 def fetch(url: str, dest: Path, timeout: int = 60) -> None:
@@ -111,7 +115,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         args.index_file = args.gdac_cache / INDEX_NAME
-        fetch(f"{args.gdac_root.rstrip('/')}/{INDEX_NAME}", args.index_file)
+        root = args.gdac_root.rstrip("/")
+        fetch(f"{root}/{INDEX_NAME}", args.index_file)
     text = args.index_file.read_text(encoding="utf-8", errors="replace")
     rows = parse_index(text)
     selected = select_rows(
@@ -136,9 +141,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- profile files ---------------------------------------------------
     if args.download:
+        root = args.gdac_root.rstrip("/")
         for row in selected:
-            url = f"{args.gdac_root.rstrip('/')}/{row.file}"
-            fetch(url, args.gdac_cache / row.file)
+            url = f"{root}/dac/{row.file}"
+            fetch(url, args.gdac_cache / "dac" / row.file)
             print(f"[argo-acquire] fetched {row.file}")
 
     entries = load_gdac_files(args.gdac_cache, selected)

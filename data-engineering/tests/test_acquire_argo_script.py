@@ -27,11 +27,12 @@ spec = importlib.util.spec_from_file_location("acquire_argo", _SCRIPT)
 acquire = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(acquire)
 
-INDEX_SAMPLE = """# ar_index_global_prof.txt
-file,date,latitude,longitude,ocean,profiler_type,institution,date_update,parameters
-dac/aoml/4903456/4903456_001.nc,20240128,8.51,88.19,I,846,AOML,20240129,TEMP
-dac/aoml/4903456/4903456_002.nc,20240210,8.60,88.40,I,846,AOML,20240211,TEMP
-dac/meds/6902914/6902914_0123.nc,20240301,22.50,79.80,I,846,MEDS,20240302,TEMP
+INDEX_SAMPLE = """# Title : Profile directory file of the Argo Global Data Assembly Center
+# Format version : 2.0
+file,date,latitude,longitude,ocean,profiler_type,institution,date_update
+aoml/4903456/4903456_001.nc,20240128120000,8.51,88.19,I,846,AOML,20240129120000
+aoml/4903456/4903456_002.nc,20240210120000,8.60,88.40,I,846,AOML,20240211120000
+meds/6902914/6902914_0123.nc,20240301120000,22.50,79.80,I,846,MEDS,20240302120000
 """
 
 
@@ -140,7 +141,8 @@ class TestAcquireArgo:
             ]
         )
         assert rc == 0
-        # --index-file given -> only the selected profile file is fetched.
+        # --index-file given -> only the selected profile file is fetched,
+        # under the /dac root (v2.0 layout).
         assert len(fetched) == 1
         assert fetched[0].endswith("dac/aoml/4903456/4903456_001.nc")
 
@@ -164,8 +166,8 @@ class TestAcquireArgo:
     ) -> None:
         index = tmp_path / "index.txt"
         index.write_text(
-            "file,date,latitude,longitude,ocean,profiler_type,institution,date_update,parameters\n"
-            "dac/aoml/4903456/4903456_009.nc,20240110,8.51,88.19,I,846,AOML,20240111,TEMP\n"
+            "file,date,latitude,longitude,ocean,profiler_type,institution,date_update\n"
+            "aoml/4903456/4903456_009.nc,20240110120000,8.51,88.19,I,846,AOML,20240111120000\n"
         )
         rc = acquire.main(
             [

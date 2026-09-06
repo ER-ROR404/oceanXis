@@ -25,12 +25,13 @@ from oceanembed_data.argo_acquire import (
     write_profiles_json,
 )
 
-INDEX_SAMPLE = """# ar_index_global_prof.txt
-file,date,latitude,longitude,ocean,profiler_type,institution,date_update,parameters
-dac/aoml/4903456/4903456_001.nc,20240615,8.51,88.19,I,846,AOML,20240616,TEMP
-dac/aoml/4903456/4903456_002.nc,20240625,8.60,88.40,I,846,AOML,20240626,TEMP
-dac/meds/6902914/6902914_0123.nc,20240903,22.50,79.80,I,846,MEDS,20240904,TEMP
-dac/coriolis/2901673/2901673_004.nc,20241001,17.42,87.95,I,846,CORIOLIS,20241002,TEMP
+INDEX_SAMPLE = """# Title : Profile directory file of the Argo Global Data Assembly Center
+# Format version : 2.0
+file,date,latitude,longitude,ocean,profiler_type,institution,date_update
+aoml/4903456/4903456_001.nc,20240615120000,8.51,88.19,I,846,AOML,20240616120000
+aoml/4903456/4903456_002.nc,20240625120000,8.60,88.40,I,846,AOML,20240626120000
+meds/6902914/6902914_0123.nc,20240903120000,22.50,79.80,I,846,MEDS,20240904120000
+coriolis/2901673/2901673_004.nc,20241001120000,17.42,87.95,I,846,CORIOLIS,20241002120000
 """
 
 BOB = dict(lon_min=80.0, lon_max=100.0, lat_min=5.0, lat_max=22.0)
@@ -88,10 +89,39 @@ class TestParseIndex:
         rows = parse_index(INDEX_SAMPLE)
         assert len(rows) == 4
         r0 = rows[0]
-        assert r0.file == "dac/aoml/4903456/4903456_001.nc"
+        assert r0.file == "aoml/4903456/4903456_001.nc"
         assert r0.date == date(2024, 6, 15)
         assert r0.lat == 8.51
         assert r0.lon == 88.19
+
+    def test_parses_legacy_9_column_rows(self) -> None:
+        # Older GDAC index format had a trailing parameters column and
+        # YYYYMMDD dates; must still parse (fallback).
+        text = (
+            "file,date,latitude,longitude,ocean,profiler_type,institution,"
+            "date_update,parameters\n"
+            "dac/aoml/4903456/4903456_001.nc,20240615,8.51,88.19,I,846,"
+            "AOML,20240616,TEMP\n"
+        )
+        rows = parse_index(text)
+        assert len(rows) == 1
+        assert rows[0].date == date(2024, 6, 15)
+        assert rows[0].file == "dac/aoml/4903456/4903456_001.nc"
+
+    def test_positionless_rows_parse_with_none_coords(self) -> None:
+        # Some GDAC index rows have blank latitude/longitude fields; they
+        # must still parse (file/date valid) with None coordinates so
+        # selection can skip them silently.
+        text = (
+            "file,date,latitude,longitude,ocean,profiler_type,institution,date_update\n"
+            "aoml/15851/profiles/R15851_100.nc,20000812105249,,,,845,AO,20181011181005\n"
+        )
+        rows = parse_index(text)
+        assert len(rows) == 1
+        assert rows[0].file == "aoml/15851/profiles/R15851_100.nc"
+        assert rows[0].date == date(2000, 8, 12)
+        assert rows[0].lat is None
+        assert rows[0].lon is None
 
     def test_skips_malformed_lines(self) -> None:
         text = "# comment\nfile,date,latitude,longitude\nbad,line\n"
@@ -108,14 +138,26 @@ class TestParseIndex:
 
 
 class TestSelectRows:
+    def test_positionless_rows_excluded_from_selection(self) -> None:
+        # Row 1 has blank coordinates: excluded; region filter still applies
+        # to the positioned rows.
+        text = (
+            "file,date,latitude,longitude,ocean,profiler_type,institution,date_update\n"
+            "aoml/15851/profiles/R15851_100.nc,20000812105249,,,,845,AO,20181011181005\n"
+            "aoml/4903456/4903456_001.nc,20240615120000,8.51,88.19,I,846,AOML,20240616120000\n"
+        )
+        rows = parse_index(text)
+        picked = select_rows(rows, **BOB)
+        assert [r.file for r in picked] == ["aoml/4903456/4903456_001.nc"]
+
     def test_bounds_inclusive(self) -> None:
         rows = parse_index(INDEX_SAMPLE)
         # Row 2 (lat 22.50, lon 79.80) is outside BoB; rows 0,1,3 inside.
         picked = select_rows(rows, **BOB)
         assert [r.file for r in picked] == [
-            "dac/aoml/4903456/4903456_001.nc",
-            "dac/aoml/4903456/4903456_002.nc",
-            "dac/coriolis/2901673/2901673_004.nc",
+            "aoml/4903456/4903456_001.nc",
+            "aoml/4903456/4903456_002.nc",
+            "coriolis/2901673/2901673_004.nc",
         ]
 
     def test_boundary_values_kept(self) -> None:
@@ -130,7 +172,7 @@ class TestSelectRows:
             rows, min_date=date(2024, 9, 1), max_date=date(2024, 9, 30)
         )
         assert [r.file for r in picked] == [
-            "dac/meds/6902914/6902914_0123.nc",
+            "meds/6902914/6902914_0123.nc",
         ]
 
     def test_disjoint_window_returns_empty(self) -> None:
@@ -261,9 +303,9 @@ class TestLoadGdacFiles:
         off.to_netcdf(bad_dir / "4903457_002.nc")
 
         rows = [
-            IndexRow(file="dac/aoml/4903456/4903456_001.nc", date=date(2024, 6, 15), lat=8.51, lon=88.19),
+            IndexRow(file="aoml/4903456/4903456_001.nc", date=date(2024, 6, 15), lat=8.51, lon=88.19),
             # Index date 2024-06-15 vs JULD 2024-06-12 -> 3 days off -> skipped.
-            IndexRow(file="dac/aoml/4903457/4903457_002.nc", date=date(2024, 6, 15), lat=8.51, lon=88.19),
+            IndexRow(file="aoml/4903457/4903457_002.nc", date=date(2024, 6, 15), lat=8.51, lon=88.19),
         ]
         entries = load_gdac_files(tmp_path, rows)
         assert [e["source_id"] for e in entries] == ["4903456_001"]

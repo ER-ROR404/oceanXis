@@ -47,12 +47,16 @@ JULD_EPOCH = date(1950, 1, 1)
 
 @dataclass(frozen=True)
 class IndexRow:
-    """One row of the Argo global index (ar_index_global_prof.txt)."""
+    """One row of the Argo global index (ar_index_global_prof.txt).
+
+    ``lat``/``lon`` are None for positionless rows (GDAC index entries
+    with blank coordinate fields); select_rows excludes those silently.
+    """
 
     file: str
     date: date
-    lat: float
-    lon: float
+    lat: float | None
+    lon: float | None
 
 
 # --------------------------------------------------------------------------- #
@@ -63,7 +67,11 @@ class IndexRow:
 def parse_index(text: str) -> list[IndexRow]:
     """Parse the Argo global index text into IndexRow records.
 
-    Skips comment lines (``#``), the CSV header, and malformed lines.
+    Handles the current GDAC index format 2.0 (columns: file, date
+    [YYYYMMDDHHMMSS], latitude, longitude, ocean, profiler_type,
+    institution, date_update; file paths relative to the GDAC ``/dac``
+    root) and the legacy 9-column format with YYYYMMDD dates. Skips
+    comment lines (``#``), the CSV header, and malformed lines.
     """
     rows: list[IndexRow] = []
     for line_no, line in enumerate(text.splitlines(), start=1):
@@ -71,20 +79,27 @@ def parse_index(text: str) -> list[IndexRow]:
         if not line or line.startswith("#") or line.startswith("file,"):
             continue
         parts = line.split(",")
-        if len(parts) < 4:
+        if len(parts) < 8:
             logger.warning("index line %d: skipping malformed row", line_no)
             continue
         try:
-            file_, date_s, lat_s, lon_s = parts[0], parts[1], parts[2], parts[3]
-            row_date = datetime.strptime(date_s.strip(), "%Y%m%d").date()
-            rows.append(
-                IndexRow(
-                    file=file_.strip(),
-                    date=row_date,
-                    lat=float(lat_s),
-                    lon=float(lon_s),
-                )
-            )
+            file_, date_s = parts[0].strip(), parts[1].strip()
+            row_date: date | None = None
+            for fmt in ("%Y%m%d%H%M%S", "%Y%m%d"):
+                try:
+                    row_date = datetime.strptime(date_s, fmt).date()
+                    break
+                except ValueError:
+                    continue
+            if row_date is None:
+                raise ValueError(f"unparsable date {date_s!r}")
+            # Blank coordinate fields are a normal GDAC condition
+            # (positionless index entries); keep the row with None so
+            # select_rows can exclude it silently later.
+            lat_s, lon_s = parts[2].strip(), parts[3].strip()
+            lat = float(lat_s) if lat_s else None
+            lon = float(lon_s) if lon_s else None
+            rows.append(IndexRow(file=file_, date=row_date, lat=lat, lon=lon))
         except (ValueError, TypeError):
             logger.warning("index line %d: skipping unparsable row", line_no)
     return rows
@@ -110,6 +125,10 @@ def select_rows(
     """
     picked: list[IndexRow] = []
     for row in rows:
+        # Positionless index rows cannot be region-matched; drop silently
+        # (normal GDAC condition, not a data error).
+        if row.lat is None or row.lon is None:
+            continue
         if lon_min is not None and row.lon < lon_min:
             continue
         if lon_max is not None and row.lon > lon_max:
@@ -278,20 +297,23 @@ def parse_gdac_profile(ds: xr.Dataset, source_id: str) -> dict | None:
 def load_gdac_files(cache_dir: Path, rows: list[IndexRow]) -> list[dict]:
     """Load and parse Argo profile NetCDF files from a local GDAC cache.
 
-    Files are resolved as ``cache_dir / row.file``. A row whose parsed
-    profile date disagrees with its index date by more than one day is
-    skipped (honest provenance: never validate with a misdated profile).
+    Files are resolved as ``cache_dir / "dac" / row.file`` (index file
+    paths are relative to the GDAC ``/dac`` root, matching the FTP
+    layout documented in the index header). A row whose parsed profile
+    date disagrees with its index date by more than one day is skipped
+    (honest provenance: never validate with a misdated profile).
 
     Args:
-        cache_dir: Local mirror root of the GDAC (dac/... tree).
+        cache_dir: Local mirror root of the GDAC (holds a ``dac/`` tree).
         rows: Index rows (typically already selected by region/window).
 
     Returns:
         Harmonized profile entries (empty list if nothing usable).
     """
     entries: list[dict] = []
+    base = Path(cache_dir) / "dac"
     for row in rows:
-        path = Path(cache_dir) / row.file
+        path = base / row.file
         if not path.exists():
             logger.warning("missing GDAC file %s, skipping", path)
             continue
