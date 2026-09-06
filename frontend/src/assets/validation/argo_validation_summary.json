@@ -1,0 +1,40 @@
+{
+  "model_version": "hybrid_v1",
+  "validation_window": {
+    "start": "2023-08-10",
+    "end": "2023-12-31"
+  },
+  "profiles": {
+    "loaded": 291,
+    "matched": 285,
+    "unmatched": 6,
+    "unmatched_reasons": {
+      "land": 6
+    },
+    "depth_observations": 3958
+  },
+  "overall": {
+    "rmse_c": 1.3533,
+    "bias_c": 0.6121,
+    "correlation": 0.99
+  },
+  "depth_wise": {
+    "0":    { "n": 25,  "rmse_c": 0.4095, "bias_c": 0.1514, "correlation": 0.577 },
+    "5":    { "n": 283, "rmse_c": 0.4744, "bias_c": 0.1855, "correlation": 0.292 },
+    "10":   { "n": 284, "rmse_c": 0.5248, "bias_c": 0.2646, "correlation": 0.264 },
+    "20":   { "n": 284, "rmse_c": 0.6593, "bias_c": 0.4291, "correlation": 0.259 },
+    "30":   { "n": 284, "rmse_c": 0.9546, "bias_c": 0.5171, "correlation": 0.134 },
+    "50":   { "n": 283, "rmse_c": 1.8045, "bias_c": 0.9234, "correlation": 0.512 },
+    "75":   { "n": 283, "rmse_c": 2.8054, "bias_c": 2.1687, "correlation": 0.707 },
+    "100":  { "n": 283, "rmse_c": 2.6497, "bias_c": 2.1635, "correlation": 0.732 },
+    "125":  { "n": 283, "rmse_c": 1.8636, "bias_c": 1.3009, "correlation": 0.724 },
+    "150":  { "n": 283, "rmse_c": 1.2483, "bias_c": 0.6362, "correlation": 0.715 },
+    "200":  { "n": 281, "rmse_c": 0.6366, "bias_c": 0.2097, "correlation": 0.695 },
+    "300":  { "n": 278, "rmse_c": 0.2642, "bias_c": -0.1303, "correlation": 0.624 },
+    "500":  { "n": 276, "rmse_c": 0.1901, "bias_c": -0.0672, "correlation": 0.468 },
+    "700":  { "n": 276, "rmse_c": 0.1961, "bias_c": -0.0516, "correlation": 0.315 },
+    "1000": { "n": 272, "rmse_c": 0.1635, "bias_c": -0.0115, "correlation": 0.102 }
+  },
+  "limitations": "Near-surface (0-30 m) RMSE ~0.4-1.0 C and deep (300-1000 m) RMSE ~0.16-0.26 C are strong; the thermocline band (75-150 m) shows RMSE 1.2-2.8 C with a warm bias up to +2.2 C, matching expected sharpest gradients. Depth-0 has sparse coverage (n=25, only profiles sampling exactly 0 m). Overall correlation 0.99 is driven by strong deep-variance match; near-surface correlation is low because near-surface variance is small.",
+  "source_work_log": "docs/work-log/2026-09-06-argo-validation.md"
+}

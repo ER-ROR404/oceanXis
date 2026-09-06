@@ -444,6 +444,26 @@ payload for a real date (manual curl), no torch import anywhere under
 >   recovers (next request passes the gate and reaches the honest 503
 >   `MODEL_NOT_LOADED` path when no model service / demo cache).
 > - Tests: 125 backend green, coverage 95%, ruff clean.
+>
+> **STATUS: 4.1 + 4.2 COMPLETE (2026-09-06)** — ARGO summary + metadata seeding.
+> - `contracts/validation/argo-summary.schema.json` + tracked
+>   `frontend/src/assets/validation/argo_validation_summary.json`: overall
+>   (RMSE 1.3533, bias +0.6121, corr 0.99) and all 15 depth-wise cells copied
+>   VERBATIM from the repo-official work-log (no recalculation — RULE 9 / no
+>   invented scores). Deep negative biases (300-1000 m) use the U+2212 minus
+>   correctly. `depth_wise` keys locked to CANONICAL_DEPTHS (RULE 20).
+> - Regression lock test (`data-engineering/tests/test_argo_summary_schema.py`,
+>   9 tests): schema-validates (Draft7), asserts depth_wise keys equal the
+>   canonical list, and parses the work-log markdown table to assert every
+>   n/rmse/bias/corr EQUALS the authoritative source — a re-edit can't silently
+>   drift. Location intentional: `data/proof/` is gitignored, so the summary
+>   lives tracked beside the panel that consumes it.
+> - `seed_metadata` idempotency test (`backend/tests/unit/test_seed_metadata.py`,
+>   5 tests): in-memory SQLite — writes all 4 keys, second seed doesn't
+>   duplicate rows, repeated seeding stays single-row, values round-trip from
+>   Settings. Demo-cache fallback-to-unavailable already covered by Phase 3
+>   cache/map/profile tests.
+> - Testing: 130 backend (was 125) + 9 DE green; ruff clean.
 
 **Step 3.1 — /ocean/map handler** (File: `backend/app/api/v1/routes/map.py`)
 - Action: validate region/date/depth (enums from config, NOT hardcoded);

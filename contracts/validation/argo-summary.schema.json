@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/validation/argo-summary.schema.json",
+  "title": "ArgoValidationSummary",
+  "description": "Summarized independent ARGO validation of the OceanEmbed model. Values are copied verbatim from the committed work-log (docs/work-log/2026-09-06-argo-validation.md) — never recalculated. Depth keys must equal the canonical depth list (RULE 20).",
+  "type": "object",
+  "required": ["model_version", "validation_window", "profiles", "overall", "depth_wise", "limitations", "source_work_log"],
+  "properties": {
+    "model_version": { "type": "string", "enum": ["hybrid_v1"] },
+    "validation_window": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string", "format": "date" },
+        "end": { "type": "string", "format": "date" }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "required": ["loaded", "matched", "unmatched", "depth_observations"],
+      "properties": {
+        "loaded": { "type": "integer", "minimum": 0 },
+        "matched": { "type": "integer", "minimum": 0 },
+        "unmatched": { "type": "integer", "minimum": 0 },
+        "unmatched_reasons": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "depth_observations": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "overall": {
+      "type": "object",
+      "required": ["rmse_c", "bias_c", "correlation"],
+      "properties": {
+        "rmse_c": { "type": "number" },
+        "bias_c": { "type": "number" },
+        "correlation": { "type": "number" }
+      }
+    },
+    "depth_wise": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["n", "rmse_c", "bias_c", "correlation"],
+        "properties": {
+          "n": { "type": "integer", "minimum": 0 },
+          "rmse_c": { "type": "number" },
+          "bias_c": { "type": "number" },
+          "correlation": { "type": "number" }
+        }
+      }
+    },
+    "limitations": { "type": "string" },
+    "source_work_log": { "type": "string" }
+  }
+}
