@@ -420,6 +420,29 @@ class TestTrainer:
         assert "epoch 1/2" in out and "epoch 2/2" in out
         assert "train_loss=" in out and "val_loss=" in out
 
+    def test_trainer_verbose_writes_progress_file(self, fake_zarr_dir, tmp_path, capsys):
+        """verbose=True + progress_file appends each epoch line to a plain-text log.
+
+        Gives live progress visibility on Colab without notebook output
+        (Drive-streamed subprocess output may not render; a log file always does).
+        """
+        from oceanembed.models.reconstruction_net import OceanEmbedNet
+
+        region_dir, _, _, _, _, _ = fake_zarr_dir
+        train_loader, val_loader = create_dataloaders(
+            region_dir, temporal_window=7, batch_size=4, val_fraction=0.3
+        )
+        model = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        trainer = Trainer(model=model, train_loader=train_loader, val_loader=val_loader)
+        log = tmp_path / "training.log"
+        history = trainer.train(epochs=2, verbose=True, progress_file=log)
+        lines = log.read_text().strip().splitlines()
+        assert len(lines) == 2
+        assert "epoch 1/2" in lines[0] and "train_loss=" in lines[0]
+        assert "epoch 2/2" in lines[1]
+        # values match the returned history
+        assert f"{history['train_loss'][0]:.4f}" in lines[0]
+
     def test_trainer_silent_by_default(self, fake_zarr_dir, capsys):
         """Library default stays quiet — printing is opt-in (script sets verbose=True)."""
         from oceanembed.models.reconstruction_net import OceanEmbedNet

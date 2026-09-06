@@ -208,7 +208,12 @@ def run_training(
           f"batch={batch_size} train_batches={len(train_loader)} val_batches={len(val_loader)}")
     if resume_checkpoint is not None:
         print(f"[train] resuming from {resume_checkpoint}")
-    history = trainer.train(epochs=epochs, resume_from=resume_checkpoint, verbose=True)
+    training_log = artifacts_dir / "training.log"
+    print(f"[train] progress log: {training_log}")
+    history = trainer.train(
+        epochs=epochs, resume_from=resume_checkpoint,
+        verbose=True, progress_file=training_log,
+    )
 
     # Final validation metrics for the manifest
     val_loss, metrics = trainer.validate()

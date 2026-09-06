@@ -253,7 +253,7 @@ class Trainer:
         return start_epoch, history
 
     def train(self, epochs: int = 100, resume_from: Path | str | None = None,
-              verbose: bool = False) -> dict[str, list[float]]:
+              verbose: bool = False, progress_file: Path | str | None = None) -> dict[str, list[float]]:
         """Run training loop.
 
         Args:
@@ -263,6 +263,9 @@ class Trainer:
                 early-stopping state and continues the persisted loss history.
             verbose: Print a per-epoch progress line (live visibility during
                 long Colab runs). Library default is quiet.
+            progress_file: Optional plain-text log appended with each epoch
+                line. Colab cell output for streamed subprocesses may not
+                render; a log file in the artifacts dir is always readable.
 
         Returns:
             History dict with train_loss, val_loss per epoch (cumulative).
@@ -294,11 +297,14 @@ class Trainer:
             self.save_checkpoint(epoch, val_loss, is_best)
 
             if verbose:
-                print(
+                line = (
                     f"epoch {epoch + 1}/{epochs}  train_loss={train_loss:.4f}  "
-                    f"val_loss={val_loss:.4f}{status}",
-                    flush=True,
+                    f"val_loss={val_loss:.4f}{status}"
                 )
+                print(line, flush=True)
+                if progress_file is not None:
+                    with open(progress_file, "a") as fh:
+                        fh.write(line + "\n")
 
             # Early stopping
             should_stop = self.early_stopping.step(val_loss)
