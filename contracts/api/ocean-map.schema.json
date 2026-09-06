@@ -27,9 +27,9 @@
       "enum": [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000]
     },
     "values": {
-      "description": "2D float array [lat, lon] of temperature at the requested depth; NaN on masked/invalid cells.",
+      "description": "2D float array [lat, lon] of temperature at the requested depth; null on masked/invalid cells (JSON transport form of NaN).",
       "type": "array",
-      "items": { "type": "array", "items": { "type": "number" } }
+      "items": { "type": "array", "items": { "type": ["number", "null"] } }
     },
     "metadata": {
       "type": "object",

@@ -9,7 +9,7 @@ requires-python = ">=3.11"
 # Ingestion, harmonization, provenance tooling. Does NOT train models.
 
 dependencies = [
-    "copernicus-marine>=1.2",
+    "copernicusmarine>=1.2",
     "xarray>=2024.1",
     "numpy>=1.26",
     "netcdf4>=1.6",
