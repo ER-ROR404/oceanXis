@@ -23,16 +23,21 @@ def tiny_region(tmp_path):
     mask = np.array([[0, 1], [1, 1]], dtype=np.float32)  # (0,0) is land
 
     import xarray as xr
+
     xr.DataArray(
-        x, dims=("time", "channel", "lat", "lon"),
-        coords={"time": time, "lat": lat, "lon": lon},
+        x,
+        dims=("time", "channel", "latitude", "longitude"),
+        coords={"time": time, "latitude": lat, "longitude": lon},
     ).to_zarr(str(tmp_path / "X.zarr"))
     xr.DataArray(
-        y, dims=("time", "depth", "lat", "lon"),
-        coords={"time": time, "lat": lat, "lon": lon},
+        y,
+        dims=("time", "depth", "latitude", "longitude"),
+        coords={"time": time, "latitude": lat, "longitude": lon},
     ).to_zarr(str(tmp_path / "Y.zarr"))
     xr.DataArray(
-        mask, dims=("lat", "lon"), coords={"lat": lat, "lon": lon},
+        mask,
+        dims=("latitude", "longitude"),
+        coords={"latitude": lat, "longitude": lon},
     ).to_zarr(str(tmp_path / "mask.zarr"))
 
     stats = {

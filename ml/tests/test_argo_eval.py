@@ -30,24 +30,39 @@ from oceanembed.evaluation.argo import (
 # Interpolation helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestInterpToCanonical:
     def test_canonical_constants_match_contract(self):
         """LOCKED ordering from contracts/ml/model-output.schema.json."""
         assert list(CANONICAL_DEPTHS_M) == [
-            0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000,
+            0,
+            5,
+            10,
+            20,
+            30,
+            50,
+            75,
+            100,
+            125,
+            150,
+            200,
+            300,
+            500,
+            700,
+            1000,
         ]
 
     def test_exact_level_hit(self):
         depths = np.array([0.0, 20.0, 50.0, 200.0, 1000.0])
         temps = np.array([29.0, 20.0, 14.0, 9.0, 4.0])
         out = interp_to_canonical(depths, temps)
-        assert out[0] == pytest.approx(29.0)   # 0 m exact
-        assert out[3] == pytest.approx(20.0)   # 20 m exact
+        assert out[0] == pytest.approx(29.0)  # 0 m exact
+        assert out[3] == pytest.approx(20.0)  # 20 m exact
         # 30 m sits between 20 m (20.0) and 50 m (14.0): 20 + (10/30)*(14-20)
         assert out[4] == pytest.approx(18.0)
         # 300 m between 200 m (9.0) and 1000 m (4.0): 9 + (100/800)*(4-9)
         assert out[11] == pytest.approx(8.375)
-        assert out[14] == pytest.approx(4.0)   # 1000 m exact
+        assert out[14] == pytest.approx(4.0)  # 1000 m exact
 
     def test_between_depths_linear(self):
         depths = np.array([0.0, 30.0, 50.0])
@@ -135,6 +150,7 @@ class TestDateToTimeIndex:
 # Scoring math
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestScoreProfiles:
     def test_perfect_prediction(self):
         preds = np.full((2, 15), np.nan)
@@ -179,6 +195,7 @@ class TestScoreProfiles:
 # Dataset window helper
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestBuildWindow:
     def test_matches_getitem_contract(self, tiny_region):
         ds = OceanEmbedDataset(tiny_region, temporal_window=7, normalize=True)
@@ -196,6 +213,7 @@ class TestBuildWindow:
 # ─────────────────────────────────────────────────────────────────────────────
 # End-to-end ArgoValidator on synthetic data
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class FakeModel:
     """Stands in for OceanEmbedNet: returns fixed per-depth temps (degC)."""
@@ -281,7 +299,7 @@ class TestArgoValidator:
         land_profile = ArgoProfile(
             source_id="wmo5_001",
             date=np.datetime64("2024-01-08"),
-            lat=5.0,   # (0,0) → mask == 0 (land)
+            lat=5.0,  # (0,0) → mask == 0 (land)
             lon=45.0,
             depths_m=np.array([0.0, 50.0]),
             temps_c=np.array([28.0, 28.0]),
@@ -301,6 +319,59 @@ class TestArgoValidator:
             assert f"bias_depth_{d}" in report
             assert f"corr_depth_{d}" in report
             assert f"n_depth_{d}" in report
+
+    def test_accepts_abbreviated_lat_lon_coords(self, tmp_path):
+        # Regression (Colab Cell B failure "KeyError: 'lat'"): the real tensor
+        # store (build_training_dataset.py) names coords latitude/longitude;
+        # ALTERNATIVELY stores may use lat/lon. Neither may crash the
+        # validator — it must resolve both (mirrors _find_dim tolerance).
+        import xarray as xr
+
+        n_time, n_ch, n_dep, H, W = 10, 7, 15, 2, 2
+        time = pd.date_range("2024-01-01", periods=n_time, freq="D")
+        rng = np.random.default_rng(7)
+        x = rng.normal(size=(n_time, n_ch, H, W)).astype(np.float32)
+        y = 20.0 + rng.normal(scale=2.0, size=(n_time, n_dep, H, W)).astype(np.float32)
+        mask = np.array([[0, 1], [1, 1]], dtype=np.float32)
+        for lat_name, lon_name in (("lat", "lon"), ("latitude", "longitude")):
+            region = tmp_path / lat_name
+            region.mkdir()
+            xr.DataArray(
+                x,
+                dims=("time", "channel", lat_name, lon_name),
+                coords={
+                    "time": time,
+                    lat_name: np.array([5.0, 5.25]),
+                    lon_name: np.array([45.0, 45.25]),
+                },
+            ).to_zarr(str(region / "X.zarr"))
+            xr.DataArray(
+                y,
+                dims=("time", "depth", lat_name, lon_name),
+                coords={
+                    "time": time,
+                    lat_name: np.array([5.0, 5.25]),
+                    lon_name: np.array([45.0, 45.25]),
+                },
+            ).to_zarr(str(region / "Y.zarr"))
+            xr.DataArray(
+                mask,
+                dims=(lat_name, lon_name),
+                coords={lat_name: np.array([5.0, 5.25]), lon_name: np.array([45.0, 45.25])},
+            ).to_zarr(str(region / "mask.zarr"))
+            import json as _json
+
+            stats = {f"channel_{c}": {"mean": 0.0, "std": 1.0} for c in range(n_ch)}
+            (region / "normalization_stats.json").write_text(_json.dumps(stats))
+
+            ds = OceanEmbedDataset(region, temporal_window=7, normalize=True)
+            validator = ArgoValidator(ds, FakeModel(np.full(15, 28.0)))
+            report, records = validator.validate(
+                [_profile(f"wmo_{lat_name}_001", "2024-01-08", 50.0, 28.0)]
+            )
+            assert report["n_matched"] == 1
+            assert records[0]["lat"] == 5.0
+            assert records[0]["lon"] == 45.25
 
 
 def validator_report(ds, model, profiles):

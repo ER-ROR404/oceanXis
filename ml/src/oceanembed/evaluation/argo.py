@@ -27,6 +27,21 @@ CANONICAL_DEPTHS_M = np.array(
 N_CANONICAL = int(CANONICAL_DEPTHS_M.size)
 
 
+def _coord_values(da, names: list[str]) -> np.ndarray:
+    """Return coordinate values by one of several accepted names.
+
+    The tensor store (scripts/build_training_dataset.py) names the spatial
+    coordinates ``latitude``/``longitude``; early stores may use the
+    abbreviated ``lat``/``lon``. Resolves either so the validator never
+    dies on a naming mismatch (mirrors the ``_find_dim`` tolerance used
+    across the data pipeline).
+    """
+    for name in names:
+        if name in da.coords:
+            return np.asarray(da[name].values, dtype=float)
+    raise KeyError(f"tensor store has none of the coordinates {names}; found {list(da.coords)}")
+
+
 @dataclasses.dataclass
 class ArgoProfile:
     """One ARGO float profile (single cycle at a date/location).
@@ -101,7 +116,9 @@ def interp_to_canonical(
     return values
 
 
-def find_nearest_cell(lat: float, lon: float, lats: np.ndarray, lons: np.ndarray) -> tuple[int, int]:
+def find_nearest_cell(
+    lat: float, lon: float, lats: np.ndarray, lons: np.ndarray
+) -> tuple[int, int]:
     """Nearest grid-cell (row, col) to a float position on the 0.25° grid."""
     row = int(np.argmin(np.abs(np.asarray(lats, dtype=float) - lat)))
     col = int(np.argmin(np.abs(np.asarray(lons, dtype=float) - lon)))
@@ -196,15 +213,15 @@ class ArgoValidator:
 
     def __init__(self, dataset, model: torch.nn.Module, device: str = "cpu") -> None:
         """Args:
-            dataset: OceanEmbedDataset over the region tensor store (normalize=True).
-            model: Trained OceanEmbedNet producing mu in degC (best weights).
-            device: torch device string.
+        dataset: OceanEmbedDataset over the region tensor store (normalize=True).
+        model: Trained OceanEmbedNet producing mu in degC (best weights).
+        device: torch device string.
         """
         self.dataset = dataset
         self.model = model.to(device).eval()
         self.device = device
-        self.lats = np.asarray(dataset.X["lat"].values, dtype=float)
-        self.lons = np.asarray(dataset.X["lon"].values, dtype=float)
+        self.lats = _coord_values(dataset.X, ["latitude", "lat"])
+        self.lons = _coord_values(dataset.X, ["longitude", "lon"])
         self.time_coords = dataset.X["time"].values
         self.mask = np.asarray(dataset.mask.values, dtype=float)
 
