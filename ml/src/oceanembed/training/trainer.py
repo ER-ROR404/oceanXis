@@ -88,6 +88,7 @@ class Trainer:
         self.early_stopping = EarlyStopping(patience=early_stopping_patience)
         self.checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir else None
         self.best_model_state: dict | None = None
+        self.history: dict[str, list[float]] = {"train_loss": [], "val_loss": []}
 
     def train_epoch(self) -> float:
         """Run one training epoch.
@@ -184,6 +185,10 @@ class Trainer:
             epoch: Current epoch number.
             val_loss: Current validation loss.
             is_best: Whether this is the best model so far.
+
+        The checkpoint carries everything needed to resume a Colab run that
+        was interrupted (VM disconnect kills the kernel): model + optimizer
+        state, early-stopping state, best-model snapshot, and loss history.
         """
         if self.checkpoint_dir is None:
             return
@@ -195,6 +200,12 @@ class Trainer:
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "val_loss": val_loss,
+            "history": {k: list(v) for k, v in self.history.items()},
+            "early_stopping": {
+                "best_loss": self.early_stopping.best_loss,
+                "counter": self.early_stopping.counter,
+            },
+            "best_model_state": self.best_model_state,
         }
 
         # Save latest
@@ -205,28 +216,69 @@ class Trainer:
             torch.save(checkpoint, self.checkpoint_dir / "best.pt")
             self.best_model_state = copy.deepcopy(self.model.state_dict())
 
-    def train(self, epochs: int = 100) -> dict[str, list[float]]:
-        """Run full training loop.
+    def load_checkpoint(self, path: Path | str) -> tuple[int, dict[str, list[float]]]:
+        """Restore model, optimizer, and early-stopping state from a checkpoint.
 
         Args:
-            epochs: Maximum number of epochs.
+            path: Path to a checkpoint written by save_checkpoint.
 
         Returns:
-            History dict with train_loss, val_loss per epoch.
+            (start_epoch, history): start_epoch is the next epoch to run
+            (checkpoint epoch + 1); history is the persisted loss history.
         """
-        history: dict[str, list[float]] = {
-            "train_loss": [],
-            "val_loss": [],
-        }
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Resume checkpoint not found: {path}")
+        ckpt = torch.load(path, map_location=self.device, weights_only=True)
 
-        for epoch in range(epochs):
+        self.model.load_state_dict(ckpt["model_state_dict"])
+        self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+
+        es = ckpt.get("early_stopping") or {}
+        self.early_stopping.best_loss = float(es.get("best_loss", self.early_stopping.best_loss))
+        self.early_stopping.counter = int(es.get("counter", 0))
+
+        saved_best = ckpt.get("best_model_state")
+        if saved_best is not None:
+            self.best_model_state = {k: v.clone() for k, v in saved_best.items()}
+
+        history = ckpt.get("history")
+        if history is None:
+            history = {"train_loss": [], "val_loss": []}
+        else:
+            history = {k: list(v) for k, v in history.items()}
+        self.history = history
+
+        start_epoch = int(ckpt.get("epoch", -1)) + 1
+        return start_epoch, history
+
+    def train(self, epochs: int = 100, resume_from: Path | str | None = None) -> dict[str, list[float]]:
+        """Run training loop.
+
+        Args:
+            epochs: Maximum total number of epochs (starting at 0, or at the
+                resume point when ``resume_from`` is given).
+            resume_from: Optional checkpoint path. Restores model/optimizer/
+                early-stopping state and continues the persisted loss history.
+
+        Returns:
+            History dict with train_loss, val_loss per epoch (cumulative).
+        """
+        if resume_from is not None:
+            start_epoch, history = self.load_checkpoint(resume_from)
+        else:
+            start_epoch = 0
+            history = {"train_loss": [], "val_loss": []}
+        self.history = history
+
+        for epoch in range(start_epoch, epochs):
             # Train
             train_loss = self.train_epoch()
-            history["train_loss"].append(train_loss)
+            self.history["train_loss"].append(train_loss)
 
             # Validate
             val_loss, metrics = self.validate()
-            history["val_loss"].append(val_loss)
+            self.history["val_loss"].append(val_loss)
 
             # Log
             status = ""
@@ -246,4 +298,4 @@ class Trainer:
                     self.model.load_state_dict(self.best_model_state)
                 break
 
-        return history
+        return self.history

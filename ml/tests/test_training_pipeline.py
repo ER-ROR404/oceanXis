@@ -367,6 +367,57 @@ class TestTrainer:
         # Should stop before 100 epochs
         assert len(history["train_loss"]) < 100
 
+    def test_trainer_resume_continues_history(self, fake_zarr_dir, tmp_path):
+        """Resuming from a checkpoint continues the loss history and restores state."""
+        from oceanembed.models.reconstruction_net import OceanEmbedNet
+
+        region_dir, _, _, _, _, _ = fake_zarr_dir
+        train_loader, val_loader = create_dataloaders(
+            region_dir, temporal_window=7, batch_size=4, val_fraction=0.3
+        )
+        model = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        trainer = Trainer(
+            model=model, train_loader=train_loader, val_loader=val_loader,
+            checkpoint_dir=tmp_path
+        )
+        history_first = trainer.train(epochs=3)
+        assert len(history_first["train_loss"]) == 3
+
+        # Fresh model + trainer; load the checkpoint explicitly first
+        model2 = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        trainer2 = Trainer(
+            model=model2, train_loader=train_loader, val_loader=val_loader,
+            checkpoint_dir=tmp_path
+        )
+        start_epoch, history_loaded = trainer2.load_checkpoint(tmp_path / "latest.pt")
+        assert start_epoch == 3
+        assert history_loaded["train_loss"] == history_first["train_loss"]
+        # Model weights restored = exactly what the checkpoint saved
+        saved = torch.load(tmp_path / "latest.pt", weights_only=True, map_location="cpu")
+        p_saved = next(iter(saved["model_state_dict"].values()))
+        p_loaded = next(iter(model2.parameters()))
+        assert torch.allclose(p_saved.detach().cpu(), p_loaded.detach().cpu())
+        # Early-stopping state carried over (best loss no longer +inf)
+        assert trainer2.early_stopping.best_loss < float("inf")
+
+        # Continue training to epoch 6 — history accumulates, not restarts
+        history_resumed = trainer2.train(epochs=6, resume_from=tmp_path / "latest.pt")
+        assert len(history_resumed["train_loss"]) == 6
+        assert history_resumed["train_loss"][:3] == history_first["train_loss"]
+
+    def test_trainer_resume_missing_checkpoint_fails(self, fake_zarr_dir, tmp_path):
+        """Resuming from a nonexistent checkpoint fails fast."""
+        from oceanembed.models.reconstruction_net import OceanEmbedNet
+
+        region_dir, _, _, _, _, _ = fake_zarr_dir
+        train_loader, val_loader = create_dataloaders(
+            region_dir, temporal_window=7, batch_size=4, val_fraction=0.3
+        )
+        model = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        trainer = Trainer(model=model, train_loader=train_loader, val_loader=val_loader)
+        with pytest.raises(FileNotFoundError):
+            trainer.train(epochs=2, resume_from=tmp_path / "nope.pt")
+
     def test_trainer_finite_loss_with_nan_targets(self, fake_zarr_dir_with_nan):
         """Trainer loss stays finite when targets contain NaN cells.
 

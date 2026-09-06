@@ -147,6 +147,50 @@ class TestRunTraining:
                 artifacts_dir=tmp_path / "artifacts",
             )
 
+    def test_run_training_resume_continues(self, fake_zarr_dir, config_file, tmp_path) -> None:
+        """--resume picks up from latest.pt and continues the loss history.
+
+        ``epochs`` in the config is the TOTAL epoch budget; resuming from a
+        checkpoint keeps training until that total (mirrors a 100-epoch
+        Colab run interrupted at epoch 37 and re-launched with --resume).
+        """
+        yaml = __import__("yaml")
+        artifacts = tmp_path / "artifacts"
+        history1, _, status1 = entry.run_training(
+            config=config_file, data_dir=fake_zarr_dir, artifacts_dir=artifacts,
+        )
+        assert status1 == "complete"
+        assert len(history1["train_loss"]) == 2
+
+        latest = artifacts / "latest.pt"
+        assert latest.exists()
+
+        # Second run: same experiment, but a 4-epoch total budget
+        cfg2 = yaml.safe_load(config_file.read_text())
+        cfg2["training"]["epochs"] = 4
+        config4 = tmp_path / "hybrid_4epochs.yaml"
+        config4.write_text(yaml.safe_dump(cfg2))
+
+        history2, _, status2 = entry.run_training(
+            config=config4, data_dir=fake_zarr_dir, artifacts_dir=artifacts,
+            resume_checkpoint=latest,
+        )
+        assert status2 == "complete"
+        assert len(history2["train_loss"]) == 4
+        assert history2["train_loss"][:2] == history1["train_loss"]
+        manifest = json.loads((artifacts / "run_manifest.json").read_text())
+        assert manifest["training"]["epochs_run"] == 4
+        assert manifest["training"]["resume_from"] == str(latest)
+
+    def test_run_training_resume_missing_fails(self, fake_zarr_dir, config_file, tmp_path) -> None:
+        """Resuming from a file that does not exist fails fast."""
+        with pytest.raises(FileNotFoundError):
+            entry.run_training(
+                config=config_file, data_dir=fake_zarr_dir,
+                artifacts_dir=tmp_path / "artifacts",
+                resume_checkpoint=tmp_path / "nope.pt",
+            )
+
 
 class TestPreflight:
     def test_preflight_still_works_without_data(self, config_file, tmp_path) -> None:

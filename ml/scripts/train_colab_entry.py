@@ -107,6 +107,7 @@ def run_training(
     data_dir: pathlib.Path,
     artifacts_dir: pathlib.Path,
     device: str | None = None,
+    resume_checkpoint: pathlib.Path | None = None,
 ) -> tuple[dict[str, list[float]], dict[str, float], str]:
     """Run the real OceanEmbedNet training loop.
 
@@ -115,6 +116,8 @@ def run_training(
         data_dir: Region dir containing X.zarr, Y.zarr, mask.zarr (+ normalization_stats.json).
         artifacts_dir: Writable output dir for checkpoints + run manifest.
         device: Optional forced device ('cuda' / 'cpu'); auto-detected if None.
+        resume_checkpoint: Optional checkpoint (e.g. latest.pt) to continue an
+            interrupted Colab run from, instead of starting over from scratch.
 
     Returns:
         (history, metrics, status) tuple for tests and the run manifest.
@@ -203,7 +206,9 @@ def run_training(
 
     print(f"[train] device={device} epochs={epochs} lr={lr} T={temporal_window} "
           f"batch={batch_size} train_batches={len(train_loader)} val_batches={len(val_loader)}")
-    history = trainer.train(epochs=epochs)
+    if resume_checkpoint is not None:
+        print(f"[train] resuming from {resume_checkpoint}")
+    history = trainer.train(epochs=epochs, resume_from=resume_checkpoint)
 
     # Final validation metrics for the manifest
     val_loss, metrics = trainer.validate()
@@ -223,7 +228,12 @@ def run_training(
             "n_train_samples": len(train_loader.dataset),
             "n_val_samples": len(val_loader.dataset),
         },
-        "training": {"epochs_run": len(history["train_loss"]), "lr": lr, "device": device},
+        "training": {
+            "epochs_run": len(history["train_loss"]),
+            "lr": lr,
+            "device": device,
+            "resume_from": str(resume_checkpoint) if resume_checkpoint is not None else None,
+        },
         "metrics": {"val_nll": val_loss, **metrics},
         "best_val_loss": trainer.early_stopping.best_loss,
         "status": status,
@@ -244,6 +254,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--data-dir", type=pathlib.Path, default=None, help="region dir with X.zarr/Y.zarr/mask.zarr (required for real training)")
     parser.add_argument("--check", action="store_true", help="preflight only (env/config/artifacts), no training")
     parser.add_argument("--gpu", action="store_true", help="assert CUDA is available (use on Colab)")
+    parser.add_argument("--resume", type=pathlib.Path, default=None,
+                        help="checkpoint path (e.g. latest.pt) to continue an interrupted run")
     return parser.parse_args(argv)
 
 
@@ -266,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
             data_dir=args.data_dir,
             artifacts_dir=args.artifacts_dir,
             device=device,
+            resume_checkpoint=args.resume,
         )
         return 0
     except SystemExit as exc:
