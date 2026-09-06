@@ -252,7 +252,8 @@ class Trainer:
         start_epoch = int(ckpt.get("epoch", -1)) + 1
         return start_epoch, history
 
-    def train(self, epochs: int = 100, resume_from: Path | str | None = None) -> dict[str, list[float]]:
+    def train(self, epochs: int = 100, resume_from: Path | str | None = None,
+              verbose: bool = False) -> dict[str, list[float]]:
         """Run training loop.
 
         Args:
@@ -260,6 +261,8 @@ class Trainer:
                 resume point when ``resume_from`` is given).
             resume_from: Optional checkpoint path. Restores model/optimizer/
                 early-stopping state and continues the persisted loss history.
+            verbose: Print a per-epoch progress line (live visibility during
+                long Colab runs). Library default is quiet.
 
         Returns:
             History dict with train_loss, val_loss per epoch (cumulative).
@@ -289,6 +292,13 @@ class Trainer:
             # Checkpoint
             is_best = val_loss < self.early_stopping.best_loss
             self.save_checkpoint(epoch, val_loss, is_best)
+
+            if verbose:
+                print(
+                    f"epoch {epoch + 1}/{epochs}  train_loss={train_loss:.4f}  "
+                    f"val_loss={val_loss:.4f}{status}",
+                    flush=True,
+                )
 
             # Early stopping
             should_stop = self.early_stopping.step(val_loss)

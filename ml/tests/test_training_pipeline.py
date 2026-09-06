@@ -405,6 +405,34 @@ class TestTrainer:
         assert len(history_resumed["train_loss"]) == 6
         assert history_resumed["train_loss"][:3] == history_first["train_loss"]
 
+    def test_trainer_verbose_prints_epoch_progress(self, fake_zarr_dir, capsys):
+        """verbose=True streams a per-epoch progress line (live Colab visibility)."""
+        from oceanembed.models.reconstruction_net import OceanEmbedNet
+
+        region_dir, _, _, _, _, _ = fake_zarr_dir
+        train_loader, val_loader = create_dataloaders(
+            region_dir, temporal_window=7, batch_size=4, val_fraction=0.3
+        )
+        model = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        trainer = Trainer(model=model, train_loader=train_loader, val_loader=val_loader)
+        trainer.train(epochs=2, verbose=True)
+        out = capsys.readouterr().out
+        assert "epoch 1/2" in out and "epoch 2/2" in out
+        assert "train_loss=" in out and "val_loss=" in out
+
+    def test_trainer_silent_by_default(self, fake_zarr_dir, capsys):
+        """Library default stays quiet — printing is opt-in (script sets verbose=True)."""
+        from oceanembed.models.reconstruction_net import OceanEmbedNet
+
+        region_dir, _, _, _, _, _ = fake_zarr_dir
+        train_loader, val_loader = create_dataloaders(
+            region_dir, temporal_window=7, batch_size=4, val_fraction=0.3
+        )
+        model = OceanEmbedNet(in_channels=7, out_channels=15, use_seasonal=False, use_spatial=False)
+        trainer = Trainer(model=model, train_loader=train_loader, val_loader=val_loader)
+        trainer.train(epochs=1)
+        assert capsys.readouterr().out == ""
+
     def test_trainer_resume_legacy_checkpoint_without_history(self, fake_zarr_dir, tmp_path):
         """Resuming a pre-resume-feature checkpoint (epoch/model/optimizer/val_loss
         only, no history/early_stopping/best_model_state keys) must still work:
