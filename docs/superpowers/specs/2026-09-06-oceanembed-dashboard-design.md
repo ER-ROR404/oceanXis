@@ -170,25 +170,55 @@ Expose **uncertainty** in the public API so the uncertainty layer and profile
 
 ## 7. Architecture & tech (respects existing Phase 5 plan)
 
-- **Stack:** React + TypeScript + Vite (greenfield `frontend/`; no framework
-  bloat). Deps kept minimal (RULE 16 analog): `react`, `react-dom`, `leaflet`,
-  `recharts`. No UI framework.
+**Design stance (taste-skill read):** *"A trust-first scientific ocean-data
+exploration tool for climatologists and INCOIS-style analysts, with a calm,
+precise, technical language."* Dial values: `DESIGN_VARIANCE 4` (offset,
+data-dictated layout), `MOTION_INTENSITY 4` (motivated state transitions only),
+`VISUAL_DENSITY 5` (data tool; numbers in mono). This is a **data tool, not a
+marketing page** — taste-skill's landing-page blocks do not apply; its
+discipline (no AI-slop, one design system, color/type lock, contrast,
+reduced-motion, motivated GSAP) does.
+
+- **Stack:** React + TypeScript + Vite (greenfield `frontend/`).
+  - **Styling:** Tailwind CSS v4 (`@tailwindcss/vite` plugin — NOT the
+    `tailwindcss` postcss plugin). One design system per project: shadcn/ui
+    (code-owned components via `npx shadcn@latest`) — the correct choice for a
+    React + Tailwind data tool. No other UI framework mixed in.
+  - **MCPs:** `magic` (`@magicuidesign/mcp`) + `shadcn`
+    (`@magnusrodseth/shadcn-mcp-server`) enabled for component source
+    (added to `~/.config/opencode/opencode.json`; requires opencode restart
+    to take effect). `GITHUB_TOKEN` is optional (public access works; token
+    raises GitHub rate limits).
+  - **Animation:** GSAP (`gsap` + `@gsap/react` `useGSAP` hook) for
+    **motivated** transitions only: layer crossfade on map, profile draw-in,
+    staggered reveal of validation rows, status-banner slide. Every animation
+    must answer "what does this communicate?" (state transition / hierarchy /
+    feedback). No decorative marquees, no scroll hijack, no infinite loops.
+    `prefers-reduced-motion` collapses to opacity-only or none.
+  - **Runtime deps (minimal, RULE 16):** `react`, `react-dom`, `leaflet`,
+    `recharts`, `gsap`, `@gsap/react`, `tailwindcss`, `@tailwindcss/vite`,
+    `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`
+    (icons; ONE family).
 - **Typed client** (`src/api/client.ts` + `src/types/contracts.ts`): TS types
   mirroring the contract schemas; typed `getHealth`, `getHistory`, `getMap`,
   `getProfile`, `getMetadata`, `getModelVersion`; centralized `error.schema.json`
   envelope decode → typed `ApiError`; `PredictionEnvelope` discriminated on
   `status` → distinct banners.
 - **Map panel:** Leaflet over the region bounds; raster overlay from
-  `values[][]` with null→transparent; hand-rolled continuous color scale (no
-  new dep); click cell → lat/lon → profile; depth selector; date slider bound
-  to `/ocean/history`; region dropdown (`arabian_sea`/`north_indian_ocean`
-  → honest "no data in demo scope" 404 banner).
+  `values[][]` with null→transparent; hand-rolled continuous viridis-style
+  color scale (no new dep); click cell → lat/lon → profile; depth selector;
+  date slider bound to `/ocean/history`; region dropdown (`arabian_sea`/
+  `north_indian_ocean` → honest "no data in demo scope" 404 banner). Layer
+  toggle Temperature / Uncertainty crossfades via GSAP.
 - **Profile panel:** Recharts depth-vs-°C, y reversed; ±95% band from sigma;
-  null→gap only.
+  null→gap only; line draw-in via GSAP.
 - **ARGO panel:** imports the committed JSON; renders table + overall +
-  limitations.
+  limitations with a restrained stagger reveal.
 - **Layout:** app header (name + model version + health dot), status banner,
-  router (Map / Validation), honest footer.
+  router (Map / Validation), honest footer. shadcn/ui primitives (Button,
+  Card, Select, Badge, Table) skin the whole app; tokens in
+  `frontend/DESIGN.md` (single source of truth for color, type, spacing,
+  radius, elevation, motion).
 
 ---
 
@@ -200,6 +230,9 @@ Expose **uncertainty** in the public API so the uncertainty layer and profile
 - Integration/component: map renders field + skips null pixels; profile
   renders ±band + null gaps; ARGO table renders rows; status banner variants;
   honest states (404 arabian_sea, unavailable).
+- Animation: GSAP `useGSAP` contexts use scoped refs + `ctx.revert()`
+  cleanups; `prefers-reduced-motion` collapse tested (no orphaned
+  ScrollTriggers/tweens; jsdom stubs where needed).
 - Real-stack E2E: `GET /ocean/map` + `/ocean/profile` (with sigma) through the
   actual app; verify uncertainty present and honest.
 - Every 200 response validated against its contract schema (RULE 6).
@@ -216,6 +249,12 @@ Expose **uncertainty** in the public API so the uncertainty layer and profile
   present; no forecast/cyclone claims.
 - Uncertainty (`sigma`) present and contract-validated in both map and profile
   responses.
+- **Design-system conformance** (taste-skill pre-flight, adapted to a data
+  tool): one accent color used identically across the app; one radius scale;
+  all numeric readouts in mono; WCAG AA contrast on all interactive controls;
+  `min-h-[100dvh]` (never `h-screen`); no decorative/looping motion; no
+  em-dashes in UI copy; two themes (light + dark) designed and tested; empty/
+  loading/error states present; cards used only where elevation earns them.
 
 ---
 
@@ -226,3 +265,10 @@ Expose **uncertainty** in the public API so the uncertainty layer and profile
 - Cell-located ARGO and spatial error maps: **deferred / not built** (honest).
 - "Explain this location" is **deterministic** (no LLM) — this is the chosen
   differentiator.
+- **Design system:** documented in `frontend/DESIGN.md` (read first, enforced
+  during build) — tokens for type/color/spacing/radius/elevation/motion,
+  plus taste-skill discipline adapted to a data tool.
+- **MCP servers** `magic` + `shadcn` enabled in `~/.config/opencode/
+  opencode.json` (requires opencode restart to take effect in-session).
+  Component source fetched via these MCPs during Phase 5; component code is
+  owned (checked in), not a runtime dependency.
