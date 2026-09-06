@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oceanembed.local/contracts/ml/inference-rpc.schema.json",
+  "title": "Inference RPC",
+  "description": "Wire format between the ml-inference HTTP service (:8080) and the backend InferenceClient. Versioned interface — changes require a contract update (RULE 6/CONTRIBUTING).",
+  "type": "object",
+  "required": ["mu", "log_var", "series_id", "date", "region", "model_version"],
+  "properties": {
+    "mu": {
+      "type": "array",
+      "description": "Predicted temperature mean per depth, flattened [depth][lon*lat] row-major (lat outer). null encodes land cells.",
+      "items": { "type": "array", "items": { "type": ["number", "null"] } }
+    },
+    "log_var": {
+      "type": "array",
+      "description": "Predicted log-variance per depth, same layout as mu.",
+      "items": { "type": "array", "items": { "type": ["number", "null"] } }
+    },
+    "series_id": {
+      "type": "string",
+      "description": "Unique cache-series identifier, e.g. hybrid_v1-2024-01-12."
+    },
+    "date": { "type": "string", "format": "date" },
+    "region": { "type": "string", "enum": ["bay_of_bengal", "arabian_sea", "north_indian_ocean"] },
+    "model_version": { "type": "string" },
+    "dates": {
+      "type": "array",
+      "description": "Optional: dates covered by the tensor store (health response).",
+      "items": { "type": "string", "format": "date" }
+    }
+  },
+  "additionalProperties": false
+}

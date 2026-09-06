@@ -279,6 +279,21 @@ tests green for all implemented routes.
 
 ### PHASE 2 — ML inference service (ml/src/oceanembed/serving/ + backend HTTP client)
 
+> **STATUS: COMPLETE (2026-09-06)** — 2.1/2.2/2.3 done + exit gate passed.
+> - 2.1 InferenceService, contract-verified call site (`model(x)`, no coords).
+> - 2.2 ml server (`/health`, `/predict`) **+ `/predict_profile` RPC** (added:
+>   nearest-cell semantics live ml-side, RULE 3 — contract
+>   `contracts/ml/inference-profile-rpc.schema.json`); backend `InferenceClient`
+>   httpx transport + TTLCache, httpx promoted to main backend deps; E2E
+>   client↔server verified (730 dates, mu[15][5589], 296 land→null, profile
+>   snapped to (12.0, 90.0), cache hit no second call).
+> - 2.3 demo cache builder `ml/scripts/build_demo_cache.py`: built
+>   `artifacts/demo_cache/` for bay_of_bengal (31 weekly dates 2023-06-01..12-28,
+>   epoch 83 / val_loss 0.3715 from checkpoint, surface 1.76–30.69°C,
+>   masked_land_count 296).
+> - Exit gate: 31 ml serving tests + 63 backend tests green, ruff clean,
+>   coverage ≥ 80% (client 88%), no torch under `backend/app/`.
+
 **Step 2.1 — InferenceService core** (File: `ml/src/oceanembed/serving/service.py`)
 - Action:
   ```python

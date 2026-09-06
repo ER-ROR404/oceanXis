@@ -29,6 +29,15 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
     "ruff>=0.4",
+    "jsonschema>=4.20",
+]
+# Serving (Phase 2): FastAPI is reused from the backend stack (RULE 16 —
+# no second web framework), exposing model(x) over HTTP on :8080.
+# httpx2 is required by starlette's TestClient in current starlette.
+serving = [
+    "fastapi>=0.110,<1.0",
+    "uvicorn[standard]>=0.29",
+    "httpx2>=2.0",
 ]
 
 [tool.setuptools.packages.find]

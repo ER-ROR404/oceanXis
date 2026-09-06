@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oceanembed.local/contracts/ml/inference-profile-rpc.schema.json",
+  "title": "Inference Profile RPC",
+  "description": "Wire format for POST /predict_profile between the ml-inference HTTP service (:8080) and the backend InferenceClient. Nearest-cell semantics live ml-side (grid knowledge); the response returns the exact snapped cell coords used. Versioned interface — changes require a contract update.",
+  "type": "object",
+  "required": ["temperatures", "series_id", "date", "region", "model_version", "latitude", "longitude"],
+  "properties": {
+    "temperatures": {
+      "type": "array",
+      "description": "Temperature [degC] at the 15 canonical depths; null encodes land/NaN (never fabricated 0.0).",
+      "items": { "type": ["number", "null"] }
+    },
+    "series_id": {
+      "type": "string",
+      "description": "Unique cache-series identifier."
+    },
+    "date": { "type": "string", "format": "date" },
+    "region": { "type": "string", "enum": ["bay_of_bengal", "arabian_sea", "north_indian_ocean"] },
+    "model_version": { "type": "string" },
+    "latitude": {
+      "type": "number",
+      "description": "Nearest-cell latitude actually used (grid snap of the requested lat)."
+    },
+    "longitude": {
+      "type": "number",
+      "description": "Nearest-cell longitude actually used (grid snap of the requested lon)."
+    }
+  },
+  "additionalProperties": false
+}
