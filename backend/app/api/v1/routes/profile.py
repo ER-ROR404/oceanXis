@@ -1,11 +1,12 @@
-"""GET /api/v1/ocean/map — gridded temperature at region/date/depth (plan 3.1).
+"""GET /api/v1/ocean/profile — temperature at a grid cell across all 15 depths.
 
 Status taxonomy (prediction.schema.json): ``model_prediction`` (fresh live
 inference), ``cached_data`` (route TTL replay), ``fallback_demo`` (pre-built
-demo cache when the model service is down), ``unavailable`` (503 error
-envelope, code MODEL_NOT_LOADED) when neither path can serve. Values are never
-fabricated: land stays null (D9); missing channels are reported, never
-zero-filled. Coordinates come from the ml service's own grid (RULE 6/7).
+demo cache when the model service is down), ``unavailable`` (503) when neither
+path can serve. Nearest-cell semantics live ml-side (RULE 3); the backend
+passes the snapped cell centers through honestly. Land cells return nulls at
+every depth — zero is never fabricated (D9). Coordinates are validated against
+config/regions.yaml per queried region (not the stale global openapi bounds).
 """
 
 from __future__ import annotations
@@ -17,13 +18,18 @@ from fastapi import APIRouter
 
 from app.api.v1.envelope import (
     available_channel_status,
-    build_map_payload,
+    build_profile_payload,
     cached_channel_status,
     mark_cached,
     prediction_envelope,
 )
-from app.api.v1.validation import validate_date, validate_depth, validate_region
+from app.api.v1.validation import (
+    validate_coordinate,
+    validate_date,
+    validate_region,
+)
 from app.core.config import Settings
+from app.domain.regions import get_region
 from app.schemas.error import (
     DataNotAvailableError,
     InferenceFailedError,
@@ -34,31 +40,33 @@ from app.services.inference_client import InferenceClient
 
 router = APIRouter(tags=["ocean"])
 
-# Route-level TTL cache of cooked map payloads (the client has its own raw
-# cache; this one decides the cached_data status). Keyed per region/date/depth.
 _ENVELOPE_TTL_SECONDS = 60.0
-_map_cache: TTLCache[tuple, dict[str, Any]] = TTLCache(maxsize=256, ttl=_ENVELOPE_TTL_SECONDS)
+_profile_cache: TTLCache[tuple, dict[str, Any]] = TTLCache(maxsize=256, ttl=_ENVELOPE_TTL_SECONDS)
 
 
-def _try_fallback(region: str, date: str, depth: int) -> dict[str, Any] | None:
-    """Demo-cache payload or None. Corrupt readers degrade to a cache miss
-    (still honest: no fabricated data; the route then reports unavailable)."""
+def _try_profile_fallback(region: str, date: str, lat: float, lon: float) -> dict[str, Any] | None:
     try:
-        return DemoCache().get_map(region, date, depth)
+        return DemoCache().get_profile(region, date, lat, lon)
     except Exception:
         return None
 
 
-@router.get("/ocean/map")
-def get_ocean_map(region: str, date: str, depth: int = 0) -> dict[str, Any]:
-    """Gridded temperature field (ocean-map.schema.json payload in envelope)."""
+@router.get("/ocean/profile")
+def get_ocean_profile(
+    region: str,
+    date: str,
+    latitude: float,
+    longitude: float,
+) -> dict[str, Any]:
+    """Temperature profile across 15 canonical depths at a single grid cell."""
     region = validate_region(region)
     date = validate_date(date)
-    depth = validate_depth(depth)
+    region_obj = get_region(region)
+    lat, lon = validate_coordinate(region_obj, latitude, longitude)
     settings = Settings()
 
-    key = (region, date, depth)
-    cached_payload = _map_cache.get(key)
+    key = (region, date, lat, lon)
+    cached_payload = _profile_cache.get(key)
     if cached_payload is not None:
         return prediction_envelope(
             status="cached_data",
@@ -69,13 +77,13 @@ def get_ocean_map(region: str, date: str, depth: int = 0) -> dict[str, Any]:
 
     client = InferenceClient()
     try:
-        body = client.predict_map(region, date)
+        body = client.predict_profile(region, date, lat, lon)
     except DataNotAvailableError:
-        payload = _try_fallback(region, date, depth)
+        payload = _try_profile_fallback(region, date, lat, lon)
         if payload is None:
             raise
     except (ModelNotLoadedError, InferenceFailedError) as exc:
-        payload = _try_fallback(region, date, depth)
+        payload = _try_profile_fallback(region, date, lat, lon)
         if payload is None:
             raise ModelNotLoadedError(
                 details={
@@ -86,8 +94,8 @@ def get_ocean_map(region: str, date: str, depth: int = 0) -> dict[str, Any]:
                 }
             ) from exc
     else:
-        payload = build_map_payload(region, date, depth, body, settings)
-        _map_cache[key] = payload
+        payload = build_profile_payload(region, date, body, settings)
+        _profile_cache[key] = payload
         return prediction_envelope(
             status="model_prediction",
             payload=payload,
@@ -95,8 +103,8 @@ def get_ocean_map(region: str, date: str, depth: int = 0) -> dict[str, Any]:
             channel_status=available_channel_status(),
         )
 
-    # fallback_demo served the request.
-    _map_cache[key] = payload
+    # fallback_demo
+    _profile_cache[key] = payload
     return prediction_envelope(
         status="fallback_demo",
         payload=payload,

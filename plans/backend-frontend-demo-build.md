@@ -405,6 +405,21 @@ payload for a real date (manual curl), no torch import anywhere under
 >   ocean-map.schema.json (cross-file refs now resolve in the test harness).
 > - **Next: 3.2 `/ocean/profile`** (shared envelope helper ready; profile RPC
 >   + nearest-cell semantics already live ml-side from Phase 2).
+>
+> **STATUS: 3.2 COMPLETE (2026-09-06)** — `/ocean/profile` shipped.
+> - `DemoCache.get_profile` real reader: nearest-cell index over
+>   `coordinates.json` (mirrors ml `find_nearest_cell` semantics); land cells
+>   return all-null temperatures, never 0.0 (D9).
+> - Route validates lat/lon against the queried region's bounds from
+>   `config/regions.yaml` (not the stale global openapi 0..32/43..107 limits);
+>   raises `INVALID_COORDINATE` (400).
+> - Live E2E on the real stack: snapped cell (12.0, 90.0), surface 29.92°C,
+>   deep1000 6.59°C, depth list exactly `CANONICAL_DEPTHS`; fallback after
+>   server kill returns finite temperatures from `artifacts/demo_cache`.
+> - Shared `validation.py` (region/date/depth/coordinate per config) refactored
+>   out of map.py — DRY, all map tests green.
+> - Testing: 32 ml + 103 backend (13 map + 15 cache + 11 profile + 3 client
+>   validation) green, backend coverage 95%, ruff clean.
 
 **Step 3.1 — /ocean/map handler** (File: `backend/app/api/v1/routes/map.py`)
 - Action: validate region/date/depth (enums from config, NOT hardcoded);

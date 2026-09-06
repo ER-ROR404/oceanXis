@@ -16,6 +16,18 @@ from app.domain.depths import CANONICAL_DEPTHS
 
 LIVE_DATA_SOURCE = "hybrid_v1 model inference (trained on GLORYS12v1 reanalysis)"
 
+# Canonical input-channel labels for envelope.channel_status.
+# Live inference: all 7 "available". Cache-served: all 7 "cached".
+CHANNEL_IDS = tuple(f"channel_{i}" for i in range(7))
+
+
+def available_channel_status() -> dict[str, str]:
+    return {cid: "available" for cid in CHANNEL_IDS}
+
+
+def cached_channel_status() -> dict[str, str]:
+    return {cid: "cached" for cid in CHANNEL_IDS}
+
 
 def prediction_envelope(
     *,
@@ -86,3 +98,31 @@ def mark_cached(payload: dict[str, Any]) -> dict[str, Any]:
     metadata["cached"] = True
     out["metadata"] = metadata
     return out
+
+
+def build_profile_payload(
+    region: str,
+    date: str,
+    predict_body: dict[str, Any],
+    settings: Settings,
+) -> dict[str, Any]:
+    """ocean-profile.schema.json payload from a validated ml /predict_profile response.
+
+    Profile cells carry the snapped lat/lon from the ml service; land cells
+    return nulls at every depth — zero is never fabricated (D9).
+    """
+    return {
+        "region": region,
+        "date": date,
+        "lat": float(predict_body["latitude"]),
+        "lon": float(predict_body["longitude"]),
+        "depths": list(CANONICAL_DEPTHS),
+        "temperatures": predict_body["temperatures"],
+        "metadata": {
+            "model_version": settings.model_version,
+            "data_source": LIVE_DATA_SOURCE,
+            "preprocessing_version": settings.data_version,
+            "cached": False,
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    }

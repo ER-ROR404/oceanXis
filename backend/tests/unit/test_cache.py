@@ -145,3 +145,64 @@ class TestDemoCache:
         cache = make_cache(tmp_path)
         with pytest.raises(ValueError):
             cache.get_map("bay_of_bengal", "2024-01-10", 1000)
+
+    # ── profile reader (plan 3.2) ────────────────────────────────────────
+
+    def test_get_profile_snaps_to_nearest_cell(self, tmp_path) -> None:
+        """lat/lon snapped to the grid center via nearest index."""
+        write_demo_cache(tmp_path, offset=1.0)  # surface 21.0, deep 6.0
+        cache = make_cache(tmp_path)
+        payload = cache.get_profile("bay_of_bengal", "2024-01-10", 10.3, 88.2)
+        assert payload is not None
+        assert payload["region"] == "bay_of_bengal"
+        assert payload["date"] == "2024-01-10"
+        assert payload["lat"] == 10.0  # nearest cell center (row 0)
+        assert payload["lon"] == 88.0  # nearest cell center (col 0)
+        assert payload["depths"][0] == 0
+        assert len(payload["temperatures"]) == 15
+        assert payload["temperatures"][0] == 21.0
+        assert all(v == 6.0 for v in payload["temperatures"][1:])
+
+    def test_get_profile_reports_nearest_row_for_far_query(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        payload = cache.get_profile("bay_of_bengal", "2024-01-10", 11.6, 89.9)
+        assert payload is not None
+        assert payload["lat"] == 11.0  # row 1
+        assert payload["lon"] == 90.0  # col 2
+
+    def test_get_profile_land_cell_all_null_never_zero(self, tmp_path) -> None:
+        """All-landsdeep cell (0,1): every depth is null; zero is never fabricated."""
+        write_demo_cache(tmp_path)
+        region_dir = tmp_path / "bay_of_bengal"
+        with np.load(region_dir / "2024-01-10.npz") as data:
+            mu = data["mu"]
+        mu[:, 0, 1] = np.nan  # land column across all depths
+        np.savez(region_dir / "2024-01-10.npz", mu=mu, log_var=np.zeros_like(mu))
+        cache = make_cache(tmp_path)
+        payload = cache.get_profile("bay_of_bengal", "2024-01-10", 10.0, 89.0)
+        assert payload is not None
+        assert payload["lat"] == 10.0 and payload["lon"] == 89.0
+        assert payload["temperatures"] == [None] * 15
+        assert all(v is None for v in payload["temperatures"])
+
+    def test_get_profile_metadata_honest(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        payload = cache.get_profile("bay_of_bengal", "2024-01-10", 10.0, 88.0)
+        assert payload is not None
+        meta = payload["metadata"]
+        assert meta["cached"] is True
+        assert meta["model_version"] == "hybrid_v1"
+        assert meta["timestamp"] == "2024-01-01T00:00:00+00:00"
+        assert "demo cache" in meta["data_source"].lower()
+
+    def test_get_profile_none_when_date_missing(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        assert cache.get_profile("bay_of_bengal", "1999-01-01", 10.0, 88.0) is None
+
+    def test_get_profile_none_when_region_missing(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        assert cache.get_profile("arabian_sea", "2024-01-10", 10.0, 88.0) is None

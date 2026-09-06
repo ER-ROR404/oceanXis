@@ -18,6 +18,11 @@ from app.core.config import Settings
 from app.schemas.error import DataNotAvailableError
 
 
+def _nearest_index(values: list[float], target: float) -> int:
+    """Index of the grid center closest to target (mirrors ml find_nearest_cell)."""
+    return min(range(len(values)), key=lambda i: abs(values[i] - target))
+
+
 class DemoCache:
     """Reads pre-built fallback maps/profiles from the demo cache dir."""
 
@@ -78,8 +83,48 @@ class DemoCache:
         }
 
     def get_profile(self, region: str, date: str, lat: float, lon: float) -> dict[str, Any] | None:
-        del region, date, lat, lon  # placeholder signature (Phase 3.2 wiring)
-        return None
+        """Ocean-profile payload at the nearest grid cell, or None when absent.
+
+        Snap semantics mirror the ml service (nearest lat/lon index); snapped
+        cell centers are reported honestly in the payload (never the raw query).
+        All-land cells return nulls at every depth — zero is never fabricated.
+        """
+        region_dir = self._cache_dir / region
+        coords_path = region_dir / "coordinates.json"
+        npz_path = region_dir / f"{date}.npz"
+        if not (region_dir.is_dir() and coords_path.exists() and npz_path.exists()):
+            return None
+
+        coords = json.loads(coords_path.read_text())
+        lat_idx = _nearest_index(coords["lat"], lat)
+        lon_idx = _nearest_index(coords["lon"], lon)
+
+        mu = np.asarray(np.load(npz_path)["mu"], dtype=np.float32)
+        temps = [
+            None if np.isnan(v) else float(v)  # type: ignore[arg-type]
+            for v in mu[:, lat_idx, lon_idx]
+        ]
+
+        manifest = self._manifest or self._read_manifest()
+        metadata = {
+            "model_version": (manifest or {}).get("model_version", "hybrid_v1"),
+            "data_source": "Pre-built demo cache (hybrid_v1 checkpoint)",
+            "preprocessing_version": (
+                f"demo-cache-v{(manifest or {}).get('format_version', 1)}"
+            ),
+            "cached": True,
+            "timestamp": (manifest or {}).get("generated_at")
+            or datetime.now(UTC).isoformat(),
+        }
+        return {
+            "region": region,
+            "date": date,
+            "lat": coords["lat"][lat_idx],
+            "lon": coords["lon"][lon_idx],
+            "depths": coords["depths_m"],
+            "temperatures": temps,
+            "metadata": metadata,
+        }
 
     def _read_manifest(self) -> dict[str, Any] | None:
         manifest_path = self._cache_dir / "manifest.json"
