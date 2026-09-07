@@ -9,6 +9,7 @@ payload schema conformance (ocean-profile.schema.json, prediction.schema.json).
 from __future__ import annotations
 
 import json
+import math
 
 import numpy as np
 import pytest
@@ -25,8 +26,12 @@ from app.schemas.error import (
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
+# log_var = -1.0 for live cells → sigma = sqrt(exp(-1.0)).
+SIGMA_LIVE = math.sqrt(math.exp(-1.0))
+
 LIVE_PROFILE_BODY = {
     "temperatures": [29.0, 28.5, None] + [25.0] * 12,
+    "log_vars": [-1.0, -1.0, None] + [-1.0] * 12,
     "series_id": "hybrid_v1-2023-06-15-cell",
     "date": "2023-06-15",
     "region": "bay_of_bengal",
@@ -37,6 +42,7 @@ LIVE_PROFILE_BODY = {
 
 LAND_PROFILE_BODY = {
     "temperatures": [None] * 15,
+    "log_vars": [None] * 15,
     "series_id": "hybrid_v1-2023-06-15-cell",
     "date": "2023-06-15",
     "region": "bay_of_bengal",
@@ -139,6 +145,10 @@ class TestProfileLive:
         assert body["payload"]["lon"] == 90.0
         assert body["payload"]["depths"] == list(CANONICAL_DEPTHS)
         assert body["payload"]["temperatures"][2] is None
+        # sigma mirrors temperatures: null at the same masked depth.
+        assert body["payload"]["sigma"][0] == pytest.approx(SIGMA_LIVE)
+        assert body["payload"]["sigma"][2] is None
+        assert body["payload"]["sigma"][3] == pytest.approx(SIGMA_LIVE)
         assert body["payload"]["metadata"]["cached"] is False
         assert all(v == "available" for v in body["metadata"]["channel_status"].values())
 
@@ -153,6 +163,7 @@ class TestProfileLive:
         body = resp.json()["payload"]
         assert body["temperatures"] == [None] * 15
         assert all(v is None for v in body["temperatures"])
+        assert body["sigma"] == [None] * 15
 
     def test_profile_source_honest(self, fake_client) -> None:
         resp = make_client().get(
@@ -169,13 +180,14 @@ class TestProfileCached:
         client = make_client()
         params = {"region": "bay_of_bengal", "date": "2023-06-15",
                   "latitude": 12.0, "longitude": 90.0}
-        client.get("/api/v1/ocean/profile", params=params)
+        first = client.get("/api/v1/ocean/profile", params=params)
         second = client.get("/api/v1/ocean/profile", params=params)
         body = second.json()
         validate_contract(body, "prediction")
         assert body["status"] == "cached_data"
         assert body["payload"]["metadata"]["cached"] is True
         assert fake_client.calls == 1
+        assert first.json()["payload"]["sigma"] == body["payload"]["sigma"]
 
 
 class TestProfileFallback:
@@ -202,6 +214,9 @@ class TestProfileFallback:
         assert body["payload"]["lon"] == 90.0
         assert body["payload"]["temperatures"][0] == 20.0
         assert body["payload"]["temperatures"][1] == 5.0
+        # demo cache log_var = 0 → sigma = 1.0 at every unmasked depth.
+        assert body["payload"]["sigma"][0] == 1.0
+        assert body["payload"]["sigma"][1] == 1.0
         assert body["payload"]["metadata"]["cached"] is True
 
 

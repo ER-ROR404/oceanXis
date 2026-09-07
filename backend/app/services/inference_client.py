@@ -228,7 +228,11 @@ def _validate_predict_body(body: Any) -> None:
 
 
 def _validate_profile_body(body: Any) -> None:
-    """Contract shape: {temperatures: [15] numeric-or-null, snapped coords}."""
+    """Contract shape: {temperatures, log_vars: [15] numeric-or-null, snapped coords}.
+
+    log_vars stays an internal wire field: the backend converts it to the public
+    sigma = sqrt(exp(log_var)) surface and never exposes the raw variance.
+    """
     if not isinstance(body, dict):
         raise ValueError("profile payload is not an object")
     temps = body.get("temperatures")
@@ -237,6 +241,12 @@ def _validate_profile_body(body: Any) -> None:
     for v in temps:
         if v is not None and not _is_number(v):
             raise ValueError("non-numeric temperature")
+    log_vars = body.get("log_vars")
+    if not isinstance(log_vars, list) or len(log_vars) != len(CANONICAL_DEPTHS):
+        raise ValueError("log_vars must have one entry per canonical depth")
+    for v in log_vars:
+        if v is not None and not _is_number(v):
+            raise ValueError("non-numeric log_vars")
     for field in ("latitude", "longitude"):
         if not _is_number(body.get(field)):
             raise ValueError(f"missing numeric field: {field}")

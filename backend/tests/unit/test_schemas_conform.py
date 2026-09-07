@@ -21,6 +21,7 @@ class TestMapSchemaConforms:
             channel="temperature",
             depth=100,
             values=[[22.1, 22.2, 22.3], [22.0, 22.1, 22.2], [21.9, 22.0, 22.1]],
+            sigma=[[0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]],
             metadata=MapMetadata(
                 model_version="hybrid_v1",
                 data_source="glorys12v1",
@@ -42,6 +43,7 @@ class TestMapSchemaConforms:
             channel="temperature",
             depth=0,
             values=[[22.1, None], [None, 22.0]],
+            sigma=[[0.5, None], [None, 0.5]],
             metadata=MapMetadata(
                 model_version="hybrid_v1",
                 data_source="glorys12v1",
@@ -97,6 +99,7 @@ class TestProfileSchemaConforms:
             lon=88.25,
             depths=[0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000],
             temperatures=[28.1, 27.9, 27.5, 26.0, 24.0, 18.0, 14.0, 12.5, 11.0, 10.2, 9.5, 8.0, 6.5, 5.2, 4.0],
+            sigma=[0.4, 0.4, 0.4, 0.5, 0.6, 0.8, 1.0, 1.2, 1.4, 1.5, 1.6, 1.8, 2.0, 2.2, 2.4],
             metadata=ProfileMetadata(
                 model_version="hybrid_v1",
                 data_source="glorys12v1",
@@ -115,6 +118,7 @@ class TestProfileSchemaConforms:
             lon=88.25,
             depths=[0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000],
             temperatures=[28.1, None, 27.5, 26.0, 24.0, 18.0, 14.0, 12.5, 11.0, 10.2, 9.5, 8.0, 6.5, 5.2, 4.0],
+            sigma=[0.4, None, 0.4, 0.5, 0.6, 0.8, 1.0, 1.2, 1.4, 1.5, 1.6, 1.8, 2.0, 2.2, 2.4],
             metadata=ProfileMetadata(
                 model_version="hybrid_v1",
                 data_source="glorys12v1",

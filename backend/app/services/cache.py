@@ -9,6 +9,7 @@ metadata). NaN land round-trips to JSON null; zero is never fabricated (D9).
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,6 +22,11 @@ from app.schemas.error import DataNotAvailableError
 def _nearest_index(values: list[float], target: float) -> int:
     """Index of the grid center closest to target (mirrors ml find_nearest_cell)."""
     return min(range(len(values)), key=lambda i: abs(values[i] - target))
+
+
+def _sigma_of(log_var: float) -> float:
+    """Public uncertainty: sigma = sqrt(exp(log_var)); log_var stays internal."""
+    return math.sqrt(math.exp(log_var))
 
 
 class DemoCache:
@@ -54,11 +60,22 @@ class DemoCache:
             raise ValueError(f"depth {depth} not present in demo cache")
         depth_idx = depths_m.index(depth)
 
-        mu = np.asarray(np.load(npz_path)["mu"], dtype=np.float32)
+        npz = np.load(npz_path)
+        mu = np.asarray(npz["mu"], dtype=np.float32)
         plane = mu[depth_idx]
         values = [
             [None if np.isnan(v) else float(v) for v in row]  # type: ignore[arg-type]
             for row in plane
+        ]
+        log_var_plane = np.asarray(npz["log_var"], dtype=np.float32)[depth_idx]
+        sigma = [
+            [None if np.isnan(v) else _sigma_of(float(v)) for v in row]  # type: ignore[arg-type]
+            for row in log_var_plane
+        ]
+        # Contract: sigma mirrors values cell-for-cell — null wherever values is null.
+        sigma = [
+            [None if v is None else s for v, s in zip(vrow, srow)]
+            for vrow, srow in zip(values, sigma)
         ]
 
         manifest = self._manifest or self._read_manifest()
@@ -79,6 +96,7 @@ class DemoCache:
             "channel": "temperature",
             "depth": depth,
             "values": values,
+            "sigma": sigma,
             "metadata": metadata,
         }
 
@@ -99,11 +117,19 @@ class DemoCache:
         lat_idx = _nearest_index(coords["lat"], lat)
         lon_idx = _nearest_index(coords["lon"], lon)
 
-        mu = np.asarray(np.load(npz_path)["mu"], dtype=np.float32)
+        npz = np.load(npz_path)
+        mu = np.asarray(npz["mu"], dtype=np.float32)
+        log_var = np.asarray(npz["log_var"], dtype=np.float32)
         temps = [
             None if np.isnan(v) else float(v)  # type: ignore[arg-type]
             for v in mu[:, lat_idx, lon_idx]
         ]
+        sigma = [
+            None if np.isnan(v) else _sigma_of(float(v))  # type: ignore[arg-type]
+            for v in log_var[:, lat_idx, lon_idx]
+        ]
+        # Contract: sigma mirrors temperatures depth-for-depth — null wherever masked.
+        sigma = [None if t is None else s for t, s in zip(temps, sigma)]
 
         manifest = self._manifest or self._read_manifest()
         metadata = {
@@ -123,6 +149,7 @@ class DemoCache:
             "lon": coords["lon"][lon_idx],
             "depths": coords["depths_m"],
             "temperatures": temps,
+            "sigma": sigma,
             "metadata": metadata,
         }
 

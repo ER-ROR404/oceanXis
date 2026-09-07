@@ -37,6 +37,11 @@ class MapResponse(BaseModel):
     values: list[list[float | None]] = Field(
         ..., description="2D [lat, lon] temperature; None on masked/invalid cells."
     )
+    sigma: list[list[float | None]] = Field(
+        ...,
+        description="2D [lat, lon] sigma = sqrt(exp(log_var)); mirrors values "
+        "cell-for-cell, None on the same masked cells (raw log_var stays internal).",
+    )
     metadata: MapMetadata
 
     def model_post_init(self, __context) -> None:

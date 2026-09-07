@@ -10,10 +10,14 @@ against ocean-map.schema.json (RULE 6).
 from __future__ import annotations
 
 import json
+import math
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+
+# log_var = -1.0 in the live fake body → sigma = sqrt(exp(log_var)).
+EXPECTED_SIGMA = math.sqrt(math.exp(-1.0))
 
 import app.api.v1.routes.map as map_route  # noqa: E402  (patching target)
 from app.main import create_app
@@ -158,6 +162,13 @@ class TestMapLive:
             "latitude": [10.0, 11.0],
             "longitude": [88.0, 89.0, 90.0],
         }
+        # sigma mirrors values shape cell-for-cell; all non-null at depth 5.
+        assert len(body["payload"]["sigma"]) == 2
+        assert all(len(row) == 3 for row in body["payload"]["sigma"])
+        for row in body["payload"]["sigma"]:
+            for v in row:
+                assert v is not None
+                assert v == pytest.approx(EXPECTED_SIGMA)
         assert body["payload"]["metadata"]["cached"] is False
         assert set(body["metadata"]["channel_status"]) == {f"channel_{i}" for i in range(7)}
         assert all(v == "available" for v in body["metadata"]["channel_status"].values())
@@ -171,6 +182,7 @@ class TestMapLive:
         validate_contract(body, "prediction")
         assert body["payload"]["depth"] == 0
         assert body["payload"]["values"][0][1] is None  # land stays null
+        assert body["payload"]["sigma"][0][1] is None
 
     def test_map_land_cell_null_never_zero(self, fake_client) -> None:
         """D9 invariant: None cells survive and no 0.0 is fabricated."""
@@ -208,6 +220,7 @@ class TestMapCached:
         assert fake_client.calls == 1
         # Values are byte-identical to the live response.
         assert first.json()["payload"]["values"] == body["payload"]["values"]
+        assert first.json()["payload"]["sigma"] == body["payload"]["sigma"]
 
     def test_map_cache_is_per_date(self, fake_client) -> None:
         client = make_client()
@@ -243,6 +256,11 @@ class TestMapFallback:
         assert body["payload"]["values"] == [
             [23.0, None, 23.0],
             [23.0, 23.0, 23.0],
+        ]
+        # demo cache log_var = 0 → sigma = sqrt(exp(0)) = 1.0; land stays None.
+        assert body["payload"]["sigma"] == [
+            [1.0, None, 1.0],
+            [1.0, 1.0, 1.0],
         ]
         assert body["payload"]["metadata"]["cached"] is True
         assert "demo cache" in body["payload"]["metadata"]["data_source"].lower()

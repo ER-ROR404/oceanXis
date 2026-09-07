@@ -32,9 +32,15 @@ class ProfileResponse(BaseModel):
         description="Temperature at each depth in degC. null when unavailable "
         "(never fabricated). Exactly 15 entries.",
     )
+    sigma: list[float | None] = Field(
+        ...,
+        description="Estimated standard deviation (degC) at each depth, "
+        "sigma = sqrt(exp(log_var)); null on the same masked depths as "
+        "temperatures (raw log_var stays internal). Exactly 15 entries.",
+    )
     metadata: ProfileMetadata
 
-    @field_validator("depths", "temperatures")
+    @field_validator("depths", "temperatures", "sigma")
     @classmethod
     def _exactly_15(cls, v: list) -> list:
         if len(v) != 15:

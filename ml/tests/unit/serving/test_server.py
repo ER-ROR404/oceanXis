@@ -142,6 +142,7 @@ class TestPredictProfile:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["temperatures"]) == 15
+        assert len(body["log_vars"]) == 15
         assert body["series_id"].startswith("hybrid_v1-")
         # Nearest-cell snap is returned honestly.
         assert isinstance(body["latitude"], float)
@@ -155,6 +156,7 @@ class TestPredictProfile:
         )
         assert resp.status_code == 200
         assert resp.json()["temperatures"] == [None] * 15
+        assert resp.json()["log_vars"] == [None] * 15
 
     def test_predict_profile_bad_date_404(self, server):
         resp = server.post(

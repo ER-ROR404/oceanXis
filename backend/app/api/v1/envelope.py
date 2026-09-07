@@ -8,6 +8,7 @@ own grid arrays (never guessed — RULE 6/7), land stays None (never 0.0, D9).
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -57,6 +58,25 @@ def slice_plane(flat_row: list[Any], height: int, width: int) -> list[list[Any]]
     ]
 
 
+def sigma_of(log_var: float) -> float:
+    """Public uncertainty field: sigma = sqrt(exp(log_var)) (pinned decision).
+
+    ``log_var`` is the model's raw uncertainty output and stays internal; the
+    API surface exposes only sigma in the same units as the field (degC).
+    """
+    return math.sqrt(math.exp(log_var))
+
+
+def sigma_plane(log_var_rows: list[Any], height: int, width: int) -> list[list[float | None]]:
+    """Flat [H*W] log_var row -> 2D [lat][lon] sigma; null (land) stays null."""
+    if len(log_var_rows) != height * width:
+        raise ValueError("log_var row length != height * width")
+    return [
+        [None if v is None else sigma_of(float(v)) for v in log_var_rows[row * width : (row + 1) * width]]
+        for row in range(height)
+    ]
+
+
 def build_map_payload(
     region: str,
     date: str,
@@ -74,6 +94,12 @@ def build_map_payload(
     longitude = [float(v) for v in predict_body["longitude"]]
     depth_idx = CANONICAL_DEPTHS.index(depth)
     values = slice_plane(predict_body["mu"][depth_idx], len(latitude), len(longitude))
+    sigma = sigma_plane(predict_body["log_var"][depth_idx], len(latitude), len(longitude))
+    # Contract: sigma mirrors values cell-for-cell — null wherever values is null.
+    sigma = [
+        [None if v is None else s for v, s in zip(vrow, srow)]
+        for vrow, srow in zip(values, sigma)
+    ]
     return {
         "region": region,
         "date": date,
@@ -81,6 +107,7 @@ def build_map_payload(
         "channel": "temperature",
         "depth": depth,
         "values": values,
+        "sigma": sigma,
         "metadata": {
             "model_version": settings.model_version,
             "data_source": LIVE_DATA_SOURCE,
@@ -118,6 +145,7 @@ def build_profile_payload(
         "lon": float(predict_body["longitude"]),
         "depths": list(CANONICAL_DEPTHS),
         "temperatures": predict_body["temperatures"],
+        "sigma": [None if v is None else sigma_of(float(v)) for v in predict_body["log_vars"]],
         "metadata": {
             "model_version": settings.model_version,
             "data_source": LIVE_DATA_SOURCE,

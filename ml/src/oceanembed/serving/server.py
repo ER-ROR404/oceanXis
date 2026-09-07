@@ -176,7 +176,7 @@ def create_app() -> FastAPI:
                 content={"status": "error", "code": DATA_NOT_AVAILABLE, "region": req.region},
             )
         try:
-            temps = svc.predict_profile(req.date, req.lat, req.lon)
+            temps, log_vars = svc.predict_profile(req.date, req.lat, req.lon)
         except ValueError as exc:
             return JSONResponse(
                 status_code=404,
@@ -186,6 +186,7 @@ def create_app() -> FastAPI:
         row, col = find_nearest_cell(req.lat, req.lon, svc.lats, svc.lons)
         return {
             "temperatures": temps,
+            "log_vars": log_vars,
             "series_id": f"hybrid_v1-{req.date}-cell",
             "date": req.date,
             "region": req.region,

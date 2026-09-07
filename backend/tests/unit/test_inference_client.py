@@ -41,6 +41,7 @@ PREDICT_OK = {
 
 PROFILE_OK = {
     "temperatures": [29.0, None] + [28.5] * 13,
+    "log_vars": [-1.0, None] + [-1.0] * 13,
     "series_id": "hybrid_v1-2023-06-15-cell",
     "date": "2023-06-15",
     "region": "bay_of_bengal",

@@ -4,7 +4,7 @@
   "title": "OceanProfileResponse",
   "description": "Response payload for GET /api/ocean/profile — temperature at a single grid cell across all 15 canonical depths.",
   "type": "object",
-  "required": ["region", "date", "lat", "lon", "depths", "temperatures", "metadata"],
+  "required": ["region", "date", "lat", "lon", "depths", "temperatures", "sigma", "metadata"],
   "properties": {
     "region": { "$ref": "#/definitions/region" },
     "date": { "type": "string", "format": "date" },
@@ -21,6 +21,13 @@
       "type": "array",
       "items": { "type": ["number", "null"] },
       "description": "Temperature at each depth in degC. null when the cell/masked depth is unavailable (never fabricated).",
+      "minItems": 15,
+      "maxItems": 15
+    },
+    "sigma": {
+      "type": "array",
+      "items": { "type": ["number", "null"] },
+      "description": "Estimated standard deviation (degC) at each depth, sigma = sqrt(exp(log_var)); null on the same masked depths as temperatures. raw log_var is internal and never exposed.",
       "minItems": 15,
       "maxItems": 15
     },

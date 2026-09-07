@@ -4,7 +4,7 @@
   "title": "OceanMapResponse",
   "description": "Response payload for GET /api/ocean/map — gridded field at a region/date/depth. Values are temperature in degC (denormalized).",
   "type": "object",
-  "required": ["region", "date", "coordinates", "channel", "values", "metadata"],
+  "required": ["region", "date", "coordinates", "channel", "values", "sigma", "metadata"],
   "properties": {
     "region": { "$ref": "#/definitions/region" },
     "date": { "type": "string", "format": "date" },
@@ -28,6 +28,11 @@
     },
     "values": {
       "description": "2D float array [lat, lon] of temperature at the requested depth; null on masked/invalid cells (JSON transport form of NaN).",
+      "type": "array",
+      "items": { "type": "array", "items": { "type": ["number", "null"] } }
+    },
+    "sigma": {
+      "description": "2D float array [lat, lon] of estimated standard deviation (degC) at the requested depth, sigma = sqrt(exp(log_var)); mirrors values cell-for-cell, null on the same masked cells. raw log_var is internal and never exposed.",
       "type": "array",
       "items": { "type": "array", "items": { "type": ["number", "null"] } }
     },

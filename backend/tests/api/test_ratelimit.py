@@ -84,7 +84,8 @@ class TestRateLimiting:
         """First request under the limit succeeds (mocked inference)."""
         with patch("app.api.v1.routes.map.InferenceClient") as MockClient:
             MockClient.return_value.predict_map.return_value = {
-                "mu": [[0.0] * 4 for _ in range(15)],  # 2 lat × 2 lon = 4
+                "mu": [[0.0] * 4 for _ in range(15)],
+                "log_var": [[-1.0] * 4 for _ in range(15)],  # 2 lat × 2 lon = 4
                 "latitude": [10.0, 11.0],
                 "longitude": [88.0, 89.0],
             }
@@ -99,6 +100,7 @@ class TestRateLimiting:
         with patch("app.api.v1.routes.map.InferenceClient") as MockClient:
             MockClient.return_value.predict_map.return_value = {
                 "mu": [[0.0] * 4 for _ in range(15)],
+                "log_var": [[-1.0] * 4 for _ in range(15)],
                 "latitude": [10.0, 11.0],
                 "longitude": [88.0, 89.0],
             }
@@ -122,6 +124,7 @@ class TestRateLimiting:
         with patch("app.api.v1.routes.map.InferenceClient") as MockClient:
             MockClient.return_value.predict_map.return_value = {
                 "mu": [[0.0] * 4 for _ in range(15)],
+                "log_var": [[-1.0] * 4 for _ in range(15)],
                 "latitude": [10.0, 11.0],
                 "longitude": [88.0, 89.0],
             }
@@ -146,6 +149,7 @@ class TestRateLimiting:
         with patch("app.api.v1.routes.map.InferenceClient") as MockClient:
             MockClient.return_value.predict_map.return_value = {
                 "mu": [[0.0] * 4 for _ in range(15)],
+                "log_var": [[-1.0] * 4 for _ in range(15)],
                 "latitude": [10.0, 11.0],
                 "longitude": [88.0, 89.0],
             }

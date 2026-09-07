@@ -83,10 +83,12 @@ class TestInferenceService:
     ):
         service = InferenceService(region_dir=serving_region, checkpoint_path=checkpoint_path, cfg=cfg)
         profile_land = service.predict_profile("2024-01-12", lat=LAT0, lon=LON0)
-        assert profile_land == [None] * N_DEP
-        profile_ocean = service.predict_profile("2024-01-12", lat=LAT0 + 0.5, lon=LON0 + 0.5)
-        assert len(profile_ocean) == N_DEP
-        assert all(v is not None and math.isfinite(v) for v in profile_ocean)
+        assert profile_land == ([None] * N_DEP, [None] * N_DEP)
+        temps, log_vars = service.predict_profile("2024-01-12", lat=LAT0 + 0.5, lon=LON0 + 0.5)
+        assert len(temps) == N_DEP
+        assert len(log_vars) == N_DEP
+        assert all(v is not None and math.isfinite(v) for v in temps)
+        assert all(v is not None and math.isfinite(v) for v in log_vars)
 
 
 class TestLoadedModel:

@@ -143,18 +143,22 @@ class InferenceService:
         log_var = log_var.masked_fill(land, float("nan"))
         return mu, log_var, self.mask
 
-    def predict_profile(self, date: str, lat: float, lon: float) -> list[float | None]:
-        """Nearest-cell temperature profile [15] for a date/position.
+    def predict_profile(self, date: str, lat: float, lon: float) -> tuple[list[float | None], list[float | None]]:
+        """Nearest-cell (temperatures, log_vars) columns [15] for a date/position.
 
         Land cells (and out-of-domain dates) return None per depth — honestly
-        "no data here", never a fabricated value.
+        "no data here", never a fabricated value. log_vars are the raw model
+        uncertainty output; the backend converts to public sigma on the wire.
         """
         row, col = find_nearest_cell(lat, lon, self.lats, self.lons)
         if self.mask[row, col] != 1.0:
-            return [None] * self.dataset.n_depths
-        mu, _, _ = self.predict(date)
+            return [None] * self.dataset.n_depths, [None] * self.dataset.n_depths
+        mu, log_var, _ = self.predict(date)
         temps = mu[:, row, col].tolist()
-        return [float(v) if v == v else None for v in temps]  # NaN -> None
+        log_vars = log_var[:, row, col].tolist()
+        to_ticks: list[float | None] = [float(v) if v == v else None for v in temps]
+        to_logs: list[float | None] = [float(v) if v == v else None for v in log_vars]
+        return to_ticks, to_logs
 
     # ── internals ─────────────────────────────────────────────────────────
     @property
