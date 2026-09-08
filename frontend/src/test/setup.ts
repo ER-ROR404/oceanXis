@@ -16,3 +16,20 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
     }),
   });
 }
+
+// Polyfill ResizeObserver (recharts ResponsiveContainer requires it in jsdom).
+// Fire the callback synchronously with a fixed viewport so charts render.
+if (typeof globalThis !== 'undefined' && !('ResizeObserver' in globalThis)) {
+  class ResizeObserverMock {
+    private cb: (entries: { contentRect: { width: number; height: number } }[]) => void;
+    constructor(cb: (entries: { contentRect: { width: number; height: number } }[]) => void) {
+      this.cb = cb;
+    }
+    observe() {
+      this.cb([{ contentRect: { width: 800, height: 400 } }]);
+    }
+    unobserve() {}
+    disconnect() {}
+  }
+  (globalThis as Record<string, unknown>).ResizeObserver = ResizeObserverMock;
+}
