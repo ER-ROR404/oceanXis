@@ -35,7 +35,7 @@
     "model_version": { "type": "string" },
     "dates": {
       "type": "array",
-      "description": "Optional: dates covered by the tensor store (health response).",
+      "description": "Optional: dates covered by the tensor store (health response). The health response additionally reports the served region id (the loaded tensor store) via the region property, so the backend can answer region-scoped availability questions honestly — never with another region's dates.",
       "items": { "type": "string", "format": "date" }
     }
   },

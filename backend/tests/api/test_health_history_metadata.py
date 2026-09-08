@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import app.api.v1.routes.history as history_route  # noqa: E402  (patching target)
+import app.api.v1.routes.metadata as metadata_route  # noqa: E402  (patching target)
 from app.main import create_app
 
 
@@ -107,14 +108,29 @@ class TestHistory:
 
 
 class TestMetadata:
-    def test_metadata_200(self) -> None:
+    def test_metadata_200(self, monkeypatch) -> None:
+        """regions must reflect what the current stack can actually serve —
+        never the full declared set when a region has no data anywhere (RULE 7)."""
+
+        class FakeClient:
+            def available_dates(self, region: str) -> list[str]:
+                return ["2022-01-01"] if region == "bay_of_bengal" else []
+
+        class FakeDemo:
+            def available_dates(self, region: str) -> list[str]:
+                return []
+
+        monkeypatch.setattr(metadata_route, "InferenceClient", lambda: FakeClient())
+        monkeypatch.setattr(metadata_route, "DemoCache", lambda settings=None: FakeDemo())
+
         client = make_client()
         resp = client.get("/api/v1/ocean/metadata")
         assert resp.status_code == 200
         body = resp.json()
         assert body["app_name"] == "oceanembed"
         assert "regions" in body
-        assert "bay_of_bengal" in body["regions"]
+        assert body["regions"] == ["bay_of_bengal"]
+        assert set(body["regions_declared"]) == {"bay_of_bengal", "arabian_sea", "north_indian_ocean"}
 
     def test_metadata_is_honest_not_realtime(self) -> None:
         client = make_client()

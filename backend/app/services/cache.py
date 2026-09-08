@@ -41,6 +41,17 @@ class DemoCache:
     def accessible(self) -> bool:
         return self._cache_dir.is_dir()
 
+    @property
+    def manifest(self) -> dict[str, Any] | None:
+        """Honest provenance manifest (checkpoint epoch/val_loss/generated_at).
+
+        Availability and payload metadata read this same manifest, so served
+        dates, checkpoint identity and grid shape can never disagree (RULE 7).
+        """
+        if self._manifest is None:
+            self._read_manifest()
+        return self._manifest
+
     def get_map(self, region: str, date: str, depth: int) -> dict[str, Any] | None:
         """Ocean-map payload for the pre-built cache entry, or None when absent.
 

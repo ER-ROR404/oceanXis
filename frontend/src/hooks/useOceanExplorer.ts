@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiClient, ApiError, ContractError } from '../api/client';
 import type {
+  AvailabilityResponse,
   Depth,
   MapPayload,
   PredictionEnvelope,
   PredictionStatus,
   ProfilePayload,
   Region,
+  RegionAvailability,
 } from '../types/contracts';
 
 export interface SelectedCell {
@@ -19,13 +21,6 @@ export const REGION_LABELS: Record<Region, string> = {
   arabian_sea: 'Arabian Sea',
   north_indian_ocean: 'North Indian Ocean',
 };
-
-/** Demo cache window (artifacts/demo_cache/manifest.json, weekly Jun-Dec 2023). */
-export const DEMO_SCOPE = {
-  earliest: '2023-06-01',
-  latest: '2023-12-28',
-  region: 'bay_of_bengal',
-} as const;
 
 /** Map any thrown error to a human-readable honesty sentence (defensive last resort). */
 export function descriptionOf(error: unknown): string {
@@ -41,7 +36,11 @@ export interface OceanExplorer {
   date: string;
   depth: Depth;
   dates: string[];
-  historyState: 'loading' | 'ok' | 'error';
+  availability: AvailabilityResponse | null;
+  availabilityState: 'loading' | 'ok' | 'error';
+  latestAvailable: string | null;
+  provenance: string | null;
+  scope: RegionAvailability | null;
   mapEnvelope: PredictionEnvelope<MapPayload> | null;
   profileEnvelope: PredictionEnvelope<ProfilePayload> | null;
   selected: SelectedCell | null;
@@ -55,14 +54,23 @@ export interface OceanExplorer {
   selectCell: (lat: number, lon: number) => void;
 }
 
+/** Provenance sentence for a region entry; null when the region has no data. */
+export function provenanceOf(entry: RegionAvailability | undefined): string | null {
+  if (!entry || entry.status !== 'available' || !entry.checkpoint) return null;
+  const c = entry.checkpoint;
+  return `${entry.model_version} · ${c.file} · epoch ${c.epoch} · val_loss ${c.val_loss} · data through ${entry.date_end ?? ''}`;
+}
+
 /**
  * Owns every piece of explorer state and every /api/v1 fetch.
  *
- * Race safety: a single monotonic sequence number gates every async result
- * (history/map/profile). Any newer action invalidates older in-flight
- * responses, so switching region or depth can never be clobbered by a stale
- * response. Failures are honest: status 'unavailable' plus a human-readable
- * detail, never a fabricated field (RULE 1/D9 discipline).
+ * The availability report (GET /availability) drives date availability per
+ * region — the 31-date demo-cache limitation is gone; the live model service's
+ * daily coverage (730 dates) is surfaced as-is, never invented (RULE 7).
+ *
+ * Race safety: a single monotonic sequence number gates every async result.
+ * Any newer action invalidates older in-flight responses. Failures are honest:
+ * status 'unavailable' plus a human-readable detail.
  */
 export function useOceanExplorer(): OceanExplorer {
   const client = useMemo(
@@ -74,7 +82,8 @@ export function useOceanExplorer(): OceanExplorer {
   const [date, setDateState] = useState('');
   const [depth, setDepthState] = useState<Depth>(100);
   const [dates, setDates] = useState<string[]>([]);
-  const [historyState, setHistoryState] = useState<'loading' | 'ok' | 'error'>('loading');
+  const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
+  const [availabilityState, setAvailabilityState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [mapEnvelope, setMapEnvelope] = useState<PredictionEnvelope<MapPayload> | null>(null);
   const [profileEnvelope, setProfileEnvelope] = useState<PredictionEnvelope<ProfilePayload> | null>(null);
   const [selected, setSelected] = useState<SelectedCell | null>(null);
@@ -85,18 +94,14 @@ export function useOceanExplorer(): OceanExplorer {
   const requestSeq = useRef(0);
 
   const setRegion = useCallback((next: Region) => {
-    // Reset explorer state transactionally with the region change. Batching
-    // date='' and dates=[] into the same commit keeps the map/profile effects
-    // from firing with a date that belongs to the previous region (which would
-    // win the sequence race and show stale fallback_demo for a region with no
-    // data).
+    // Reset explorer state transactionally with the region change. The derive
+    // effect re-fills dates from the availability report right after.
     setRegionState(next);
     setDateState('');
     setDates([]);
     setSelected(null);
     setMapEnvelope(null);
     setProfileEnvelope(null);
-    setHistoryState('loading');
     setStatus(null);
     setBannerDetail(null);
     setBusyMap(false);
@@ -108,46 +113,52 @@ export function useOceanExplorer(): OceanExplorer {
     setSelected((current) => (current && current.lat === lat && current.lon === lon ? current : { lat, lon }));
   }, []);
 
-  // Available dates per region. An empty list is an honest no-data region.
+  // Capability report: fetched once, trusted only through the contract guard.
   useEffect(() => {
-    const seq = ++requestSeq.current;
-    setDates([]);
+    let cancelled = false;
+    setAvailabilityState('loading');
+    client
+      .getAvailability()
+      .then((avail) => {
+        if (cancelled) return;
+        setAvailability(avail);
+        setAvailabilityState('ok');
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setAvailabilityState('error');
+        setStatus('unavailable');
+        setBannerDetail(descriptionOf(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  // Derive dates (and an in-window default) for the selected region whenever
+  // the report or the region changes.
+  useEffect(() => {
+    if (!availability) return;
+    const entry = availability.regions.find((r) => r.region === region);
+    const available = entry?.status === 'available' ? entry.dates : [];
+    setDates(available);
     setDateState('');
     setMapEnvelope(null);
     setProfileEnvelope(null);
     setSelected(null);
-    setHistoryState('loading');
     setStatus(null);
     setBannerDetail(null);
     setBusyMap(false);
     setBusyProfile(false);
-
-    client
-      .getHistory(region)
-      .then((hist) => {
-        if (seq !== requestSeq.current) return;
-        const available = hist.dates;
-        setHistoryState('ok');
-        setDates(available);
-        if (available.length === 0) {
-          setStatus('unavailable');
-          setBannerDetail(
-            `No demo data for ${REGION_LABELS[region]} within the demo scope. The demo cache covers ${REGION_LABELS[DEMO_SCOPE.region]} from ${DEMO_SCOPE.earliest} to ${DEMO_SCOPE.latest}.`,
-          );
-          return;
-        }
-        // Prefer a date inside the warm, strongly stratified late-summer window.
-        const preferred = available.find((d) => d >= '2023-09-01');
-        setDateState(preferred ?? available[available.length - 1] ?? available[0]);
-      })
-      .catch((error: unknown) => {
-        if (seq !== requestSeq.current) return;
-        setHistoryState('error');
-        setDates([]);
-        setStatus('unavailable');
-        setBannerDetail(descriptionOf(error));
-      });
-  }, [client, region]);
+    if (available.length === 0) {
+      setStatus('unavailable');
+      setBannerDetail(`No data is currently available for ${REGION_LABELS[region]}.`);
+      return;
+    }
+    // Prefer a date inside the warm, strongly stratified late-summer window.
+    const preferred = available.find((d) => d >= '2023-09-01');
+    setDateState(preferred ?? available[available.length - 1] ?? available[0]);
+  }, [availability, region]);
 
   // Gridded map field, per region/date/depth.
   useEffect(() => {
@@ -200,12 +211,21 @@ export function useOceanExplorer(): OceanExplorer {
       });
   }, [client, region, date, selected]);
 
+  const entry = useMemo(
+    () => (availability ? availability.regions.find((r) => r.region === region) : undefined),
+    [availability, region],
+  );
+
   return {
     region,
     date,
     depth,
     dates,
-    historyState,
+    availability,
+    availabilityState,
+    latestAvailable: entry?.status === 'available' ? entry.date_end : null,
+    provenance: provenanceOf(entry),
+    scope: availability?.regions.find((r) => r.status === 'available') ?? null,
     mapEnvelope,
     profileEnvelope,
     selected,

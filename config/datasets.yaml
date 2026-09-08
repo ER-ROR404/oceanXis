@@ -12,6 +12,9 @@ schema: "contracts/data/dataset-metadata.schema.json"
 
 # Split policy (temporal, RULE 10 — no random shuffle of ocean data):
 #   train 2018-01-01..2023-12-31 | validation 2024-01-01..2024-12-31 | test 2025-01-01..2025-12-31
+#   — applies to the future multi-year store (spec §16). The 36-hour MVP tensor
+#   store (bay_of_bengal) covers 2022-01-01..2023-12-31 (730 daily days) and is
+#   used in full with a temporal holdout (val_fraction), no held-out test year.
 # SSS uses MY for train/val and switches to NRT for test (MY ends ~2024; NRT starts 2024-01).
 # Verified full-matrix coverage (all 7 inputs + GLORYS) across all windows: see work-log §5.
 entries:

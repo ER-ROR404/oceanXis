@@ -122,6 +122,18 @@ class TestDemoCache:
         cache = make_cache(tmp_path)
         assert cache.available_dates("atlantis") == []
 
+    def test_manifest_property_exposes_loaded_manifest(self, tmp_path) -> None:
+        """Public manifest accessor: availability/provenance reads the same
+        manifest that feeds fallback_demo (never a second copy of the truth)."""
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        manifest = cache.manifest
+        assert manifest is not None
+        assert manifest["region"] == "bay_of_bengal"
+        assert manifest["epoch"] == 83
+        assert manifest["val_loss"] == 0.3715
+        assert manifest["checkpoint"] == "best.pt"
+
     def test_get_map_surface_plane_values(self, tmp_path) -> None:
         """2D [lat][lon] values at depth 0; land cell is null, never 0.0 (D9)."""
         write_demo_cache(tmp_path, offset=1.0)

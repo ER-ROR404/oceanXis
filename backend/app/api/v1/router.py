@@ -4,10 +4,19 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import health, history, map, metadata, model_version, profile
+from app.api.v1.routes import (
+    availability,
+    health,
+    history,
+    map,
+    metadata,
+    model_version,
+    profile,
+)
 
 api_router = APIRouter()
 
+api_router.include_router(availability.router)
 api_router.include_router(health.router)
 api_router.include_router(history.router)
 api_router.include_router(map.router)

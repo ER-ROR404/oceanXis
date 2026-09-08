@@ -10,6 +10,9 @@ export function Header() {
         <span className="hidden sm:inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-0.5 text-xs font-medium text-zinc-300">
           Subsurface Ocean Explorer
         </span>
+        <span className="hidden sm:inline-flex items-center rounded-md border border-amber-800/60 bg-amber-950/30 px-2.5 py-0.5 text-xs font-medium text-amber-300">
+          Research prototype · Historical reconstruction
+        </span>
       </div>
       <p className="text-xs text-zinc-500 font-mono-data">North Indian Ocean · 0.25°</p>
     </header>

@@ -65,6 +65,44 @@ const PROFILE_PAYLOAD = {
 
 const BOB_DATES = ['2023-06-01', '2023-07-06', '2023-08-03', '2023-09-07', '2023-12-28'];
 
+/** Truthful availability envelope: only bay_of_bengal is currently served. */
+function availabilityFor(dates: string[]) {
+  const sorted = [...dates].sort();
+  const bobEntry = {
+    region: 'bay_of_bengal',
+    status: 'available',
+    dates: sorted,
+    date_start: sorted[0] ?? null,
+    date_end: sorted[sorted.length - 1] ?? null,
+    depths: [...CANONICAL_DEPTHS],
+    variables: ['SST', 'SSS', 'SSH/SLA', 'current_U', 'current_V', 'wind_U', 'wind_V'],
+    grid: { n_lat: 69, n_lon: 81, n_depths: 15 },
+    model_version: 'hybrid_v1',
+    trained_on: '2023-12-31',
+    data_version: 'bay_of_bengal-2022-2023-v1',
+    checkpoint: { file: 'best.pt', epoch: 83, val_loss: 0.3715, generated_at: '2026-09-06T13:48:16+00:00' },
+  };
+  const noData = (region: string) => ({
+    region,
+    status: 'no_data',
+    dates: [],
+    date_start: null,
+    date_end: null,
+    depths: [],
+    variables: [],
+    grid: null,
+    model_version: 'hybrid_v1',
+    trained_on: '2023-12-31',
+    data_version: 'bay_of_bengal-2022-2023-v1',
+    checkpoint: null,
+  });
+  return {
+    regions: [bobEntry, noData('arabian_sea'), noData('north_indian_ocean')],
+    model: { version: 'hybrid_v1', trained_on: '2023-12-31', data_version: 'bay_of_bengal-2022-2023-v1' },
+    generated_at: '2026-09-08T00:00:00Z',
+  };
+}
+
 let profileMode: 'ok' | 'land' = 'ok';
 let mapUrlLog: string[] = [];
 
@@ -82,6 +120,9 @@ function mockBackend() {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       mapUrlLog.push(url);
+      if (url.includes('/availability')) {
+        return jsonResponse(availabilityFor(BOB_DATES));
+      }
       if (url.includes('/ocean/history')) {
         const region = new URL(url, 'http://backend.test').searchParams.get('region');
         return jsonResponse({ region, dates: region === 'bay_of_bengal' ? BOB_DATES : [] });
@@ -141,7 +182,11 @@ describe('Ocean Explorer end-to-end journey', () => {
     expect(screen.getByText('OCEANEMBED')).toBeInTheDocument();
     expect(screen.getByText(/Modeled reconstruction; trained on data through 2023-12-31\./i)).toBeInTheDocument();
 
-    // Date select backfilled from /ocean/history, defaulted inside the window.
+    // The product is honestly marked as a historical reconstruction, never realtime.
+    expect(await screen.findByText(/Historical reconstruction/i)).toBeInTheDocument();
+    expect(screen.getByText(/Research prototype/i)).toBeInTheDocument();
+
+    // Date select backfilled from the availability report, defaulted inside the window.
     const dateSelect = (await screen.findByLabelText('Date')) as HTMLSelectElement;
     expect(dateSelect.value).toBe('2023-09-07');
     expect(screen.getByLabelText('Region')).toHaveValue('bay_of_bengal');
@@ -150,6 +195,12 @@ describe('Ocean Explorer end-to-end journey', () => {
     // Map envelope drives the status banner (fallback_demo -> honest "Demo data").
     expect(await screen.findByText('Demo data')).toBeInTheDocument();
     expect(await screen.findByTestId('map-host')).toBeInTheDocument();
+
+    // Provenance line + "Latest available" replace any realtime implication.
+    expect(await screen.findByTestId('provenance-line')).toHaveTextContent(/best\.pt/);
+    expect(screen.getByTestId('provenance-line')).toHaveTextContent(/epoch 83/i);
+    expect(screen.getByTestId('provenance-line')).toHaveTextContent(/val_loss 0\.3715/i);
+    expect(await screen.findByTestId('latest-available')).toHaveTextContent('2023-12-28');
 
     // fetch used the canonical depth 100 for the map request.
     expect(mapUrlLog.some((u) => u.includes('/ocean/map') && u.includes('depth=100'))).toBe(true);
@@ -191,7 +242,7 @@ describe('Ocean Explorer end-to-end journey', () => {
     // Honest banner + dedicated no-data empty state.
     expect(await screen.findByText('Unavailable')).toBeInTheDocument();
     const emptyState = await screen.findByTestId('empty-region-state');
-    expect(within(emptyState).getByText(/no demo data/i)).toBeInTheDocument();
+    expect(within(emptyState).getByText(/No data is currently available/i)).toBeInTheDocument();
     expect(screen.queryByTestId('map-host')).toBeNull();
 
     // Returning to Bay of Bengal recovers the map without a reload.
@@ -216,8 +267,8 @@ describe('Ocean Explorer end-to-end journey', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes('/ocean/history')) {
-          return jsonResponse({ region: 'bay_of_bengal', dates: BOB_DATES });
+        if (url.includes('/availability')) {
+          return jsonResponse(availabilityFor(BOB_DATES));
         }
         if (url.includes('/ocean/map')) {
           // Malformed: sigma missing. The client must reject it (ContractError)
@@ -237,5 +288,57 @@ describe('Ocean Explorer end-to-end journey', () => {
     // The contract message appears in the status strip and the field panel.
     expect((await screen.findAllByText(/did not match the OceanEmbed contract/i)).length).toBeGreaterThan(0);
     expect(screen.queryByTestId('map-host')).toBeNull();
+  });
+
+  it('drives the date selector from the full live availability report (730 dates), not the 31-date demo cache', async () => {
+    // Simulate the live model-service tensor store: daily 2022-01-01..2023-12-31.
+    const liveDates = Array.from({ length: 730 }, (_, i) => {
+      const d = new Date(Date.UTC(2022, 0, 1 + i));
+      return d.toISOString().slice(0, 10);
+    });
+    expect(liveDates[0]).toBe('2022-01-01');
+    expect(liveDates[liveDates.length - 1]).toBe('2023-12-31');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/availability')) {
+          return jsonResponse(availabilityFor(liveDates));
+        }
+        if (url.includes('/ocean/map')) {
+          // The live service answers: model_prediction, not fallback_demo.
+          return jsonResponse({
+            status: 'model_prediction',
+            payload: { ...MAP_PAYLOAD, date: url.includes('date=2023-09-01') ? '2023-09-01' : MAP_PAYLOAD.date },
+            metadata: { model_version: 'hybrid_v1', generated_at: '2026-09-08T00:00:00Z' },
+          });
+        }
+        if (url.includes('/ocean/profile')) {
+          return jsonResponse({
+            status: 'model_prediction',
+            payload: { ...PROFILE_PAYLOAD },
+            metadata: { model_version: 'hybrid_v1', generated_at: '2026-09-08T00:00:00Z' },
+          });
+        }
+        return jsonResponse({ error: { code: 'NOT_FOUND', message: 'unknown route' } }, 404);
+      }),
+    );
+
+    render(<App />);
+
+    // Every one of the 730 daily dates is offered — the demo-cache limitation
+    // (31 weekly dates) is gone.
+    const dateSelect = (await screen.findByLabelText('Date')) as HTMLSelectElement;
+    expect(dateSelect.options.length).toBe(730);
+    // Preferred default: first date >= the warm late-summer window.
+    expect(dateSelect.value).toBe('2023-09-01');
+
+    // Live-service status shown, full coverage surfaced (2023-12-31, not the
+    // demo-cache max 2023-12-28) and no realtime implication anywhere.
+    expect(await screen.findByText('Live model')).toBeInTheDocument();
+    expect(await screen.findByTestId('latest-available')).toHaveTextContent('2023-12-31');
+    expect(dateSelect.options[dateSelect.options.length - 1].value).toBe('2023-12-31');
+    expect(screen.queryByText('2023-12-28', { selector: '[data-testid="latest-available"]' })).toBeNull();
   });
 });

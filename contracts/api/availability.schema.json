@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sih.example/oceanembed/contracts/api/availability.schema.json",
+  "title": "AvailabilityEnvelope",
+  "description": "Capability report: what each declared region can serve today and the model provenance behind it. A region with no data anywhere is reported as status no_data with an empty dates list — it is never claimed as available (RULE 7: verified, not guessed). Checkpoint/grid provenance, when present, comes from the same demo-cache manifest that feeds fallback_demo, so availability and the served payloads can never disagree.",
+  "type": "object",
+  "required": ["regions", "model", "generated_at"],
+  "properties": {
+    "regions": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/regionAvailability" }
+    },
+    "model": {
+      "type": "object",
+      "description": "Model identity this build serves (an honest statement, never a realtime claim).",
+      "required": ["version", "trained_on", "data_version"],
+      "properties": {
+        "version": { "type": "string" },
+        "trained_on": { "type": "string" },
+        "data_version": { "type": "string" }
+      }
+    },
+    "generated_at": { "type": "string", "format": "date-time" }
+  },
+  "definitions": {
+    "regionAvailability": {
+      "type": "object",
+      "required": [
+        "region",
+        "status",
+        "dates",
+        "date_start",
+        "date_end",
+        "depths",
+        "variables",
+        "grid",
+        "model_version",
+        "trained_on",
+        "data_version",
+        "checkpoint"
+      ],
+      "properties": {
+        "region": {
+          "type": "string",
+          "enum": ["bay_of_bengal", "arabian_sea", "north_indian_ocean"]
+        },
+        "status": { "type": "string", "enum": ["available", "no_data"] },
+        "dates": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "ISO dates the current stack can serve for this region (live model-service dates, then demo-cache fallback). Empty when status is no_data; never fabricated."
+        },
+        "date_start": { "type": ["string", "null"] },
+        "date_end": { "type": ["string", "null"] },
+        "depths": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "Canonical 15 standard depths in meters, in canonical order. Empty when no_data."
+        },
+        "variables": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The 7 canonical input channels in canonical order (config/variables.yaml). Empty when no_data."
+        },
+        "grid": {
+          "type": ["object", "null"],
+          "description": "Grid shape of the served tensors (from the demo-cache manifest coordinates/grid). null when unknown or no_data.",
+          "required": ["n_lat", "n_lon", "n_depths"],
+          "properties": {
+            "n_lat": { "type": "number" },
+            "n_lon": { "type": "number" },
+            "n_depths": { "type": "number" }
+          }
+        },
+        "model_version": { "type": "string" },
+        "trained_on": { "type": "string" },
+        "data_version": { "type": "string" },
+        "checkpoint": {
+          "type": ["object", "null"],
+          "description": "Model checkpoint the served data was built with (from the demo-cache manifest). null when no_data or the manifest is absent.",
+          "required": ["file", "epoch", "val_loss"],
+          "properties": {
+            "file": { "type": "string" },
+            "epoch": { "type": "number" },
+            "val_loss": { "type": "number" },
+            "generated_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  }
+}

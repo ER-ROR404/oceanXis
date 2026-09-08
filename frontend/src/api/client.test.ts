@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiClient, ApiError, ContractError } from '../api/client';
+import { CANONICAL_DEPTHS } from '../types/contracts';
 
 const MAP_OK = {
   status: 'model_prediction',
@@ -137,6 +138,111 @@ describe('ApiClient', () => {
     const hist = await client.getHistory('bay_of_bengal');
     expect(hist.region).toBe('bay_of_bengal');
     expect(hist.dates).toContain('2023-06-15');
+  });
+
+  const AVAILABILITY_OK = {
+    regions: [
+      {
+        region: 'bay_of_bengal',
+        status: 'available',
+        dates: ['2022-01-01', '2023-12-31'],
+        date_start: '2022-01-01',
+        date_end: '2023-12-31',
+        depths: [...CANONICAL_DEPTHS],
+        variables: ['SST', 'SSS', 'SSH/SLA', 'current_U', 'current_V', 'wind_U', 'wind_V'],
+        grid: { n_lat: 69, n_lon: 81, n_depths: 15 },
+        model_version: 'hybrid_v1',
+        trained_on: '2023-12-31',
+        data_version: 'bay_of_bengal-2022-2023-v1',
+        checkpoint: { file: 'best.pt', epoch: 83, val_loss: 0.3715, generated_at: '2026-09-06T13:48:16+00:00' },
+      },
+      {
+        region: 'arabian_sea',
+        status: 'no_data',
+        dates: [],
+        date_start: null,
+        date_end: null,
+        depths: [],
+        variables: [],
+        grid: null,
+        model_version: 'hybrid_v1',
+        trained_on: '2023-12-31',
+        data_version: 'bay_of_bengal-2022-2023-v1',
+        checkpoint: null,
+      },
+    ],
+    model: { version: 'hybrid_v1', trained_on: '2023-12-31', data_version: 'bay_of_bengal-2022-2023-v1' },
+    generated_at: '2026-09-08T00:00:00Z',
+  };
+
+  it('getAvailability decodes region capabilities and model provenance', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(AVAILABILITY_OK)));
+    const avail = await client.getAvailability();
+    expect(avail.regions).toHaveLength(2);
+    const bob = avail.regions.find((r) => r.region === 'bay_of_bengal');
+    expect(bob).toBeDefined();
+    expect(bob!.status).toBe('available');
+    expect(bob!.dates).toEqual(['2022-01-01', '2023-12-31']);
+    expect(bob!.date_start).toBe('2022-01-01');
+    expect(bob!.checkpoint).toEqual({
+      file: 'best.pt',
+      epoch: 83,
+      val_loss: 0.3715,
+      generated_at: '2026-09-06T13:48:16+00:00',
+    });
+    expect(avail.model.version).toBe('hybrid_v1');
+    const arabian = avail.regions.find((r) => r.region === 'arabian_sea');
+    expect(arabian!.status).toBe('no_data');
+    expect(arabian!.dates).toEqual([]);
+    expect(arabian!.grid).toBeNull();
+  });
+
+  // Loose mutation handle: tests deliberately violate the contract, so the
+  // wire shape is treated as untyped (never trusted).
+  const mutant = () =>
+    structuredClone(AVAILABILITY_OK) as unknown as { regions: Array<Record<string, unknown>> };
+
+  it('getAvailability rejects an unknown region id (never trusts the report)', async () => {
+    const bad = mutant();
+    bad.regions[0].region = 'atlantis';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getAvailability()).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('getAvailability rejects an entry missing status', async () => {
+    const bad = mutant();
+    bad.regions[0].status = undefined;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getAvailability()).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('getAvailability rejects non-string dates on an available entry', async () => {
+    const bad = mutant();
+    bad.regions[0].dates = ['2023-09-07', 42];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getAvailability()).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('getAvailability rejects a malformed grid', async () => {
+    const bad = mutant();
+    bad.regions[0].grid = { n_lat: 69 };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getAvailability()).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('getAvailability rejects a no_data entry that claims dates', async () => {
+    const bad = mutant();
+    bad.regions[1].status = 'no_data';
+    bad.regions[1].dates = ['2023-06-01'];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getAvailability()).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('getAvailability rejects an available entry without checkpoint provenance', async () => {
+    const bad = mutant();
+    bad.regions[0].checkpoint = null;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getAvailability()).rejects.toBeInstanceOf(ContractError);
   });
 
   it('throws ContractError on non-object error envelope', async () => {

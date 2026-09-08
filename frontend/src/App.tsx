@@ -7,7 +7,7 @@ import { OceanMap, type LayerMode } from './components/map/OceanMap';
 import { ProfileChart } from './components/profile/ProfileChart';
 import { ExplainLocation } from './components/profile/ExplainLocation';
 import { ArgoValidationPanel } from './components/validation/ArgoValidationPanel';
-import { DEMO_SCOPE, REGION_LABELS, useOceanExplorer } from './hooks/useOceanExplorer';
+import { REGION_LABELS, useOceanExplorer } from './hooks/useOceanExplorer';
 import { formatLatLon } from './utils/latlon';
 import type { ExplainerInput } from './utils/explain';
 
@@ -26,7 +26,10 @@ export default function App() {
     date,
     depth,
     dates,
-    historyState,
+    availabilityState,
+    latestAvailable,
+    provenance,
+    scope,
     mapEnvelope,
     profileEnvelope,
     selected,
@@ -45,10 +48,10 @@ export default function App() {
   const profilePayload = profileEnvelope?.payload ?? null;
 
   const mapArea = () => {
-    if (dates.length === 0 && historyState === 'loading') {
+    if (dates.length === 0 && availabilityState === 'loading') {
       return <div data-testid="map-skeleton" className={skeletonClass}>Loading available dates...</div>;
     }
-    if (dates.length === 0 && historyState === 'error') {
+    if (dates.length === 0 && availabilityState === 'error') {
       return (
         <div data-testid="map-error-state" className={skeletonClass}>
           Could not reach the OceanEmbed backend.
@@ -56,23 +59,24 @@ export default function App() {
       );
     }
     if (dates.length === 0) {
+      const scopeLabel = scope ? REGION_LABELS[scope.region] : null;
       return (
         <div
           data-testid="empty-region-state"
           className="flex h-full min-h-56 flex-col items-center justify-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-6 text-center"
         >
           <p className="text-sm text-zinc-300">
-            No demo data for <span className="font-semibold">{REGION_LABELS[region]}</span> within the demo
-            scope. The demo cache covers {REGION_LABELS[DEMO_SCOPE.region]} from {DEMO_SCOPE.earliest} to{' '}
-            {DEMO_SCOPE.latest}.
+            No data is currently available for <span className="font-semibold">{REGION_LABELS[region]}</span>.
           </p>
-          <button
-            type="button"
-            onClick={() => setRegion(DEMO_SCOPE.region)}
-            className="rounded-md border border-teal-800 bg-teal-950/40 px-3 py-1.5 text-sm text-teal-300 focus:outline-none focus:ring-2 focus:ring-teal-600/40"
-          >
-            Return to {REGION_LABELS[DEMO_SCOPE.region]}
-          </button>
+          {scope && (
+            <button
+              type="button"
+              onClick={() => setRegion(scope.region)}
+              className="rounded-md border border-teal-800 bg-teal-950/40 px-3 py-1.5 text-sm text-teal-300 focus:outline-none focus:ring-2 focus:ring-teal-600/40"
+            >
+              Return to {scopeLabel}
+            </button>
+          )}
         </div>
       );
     }
@@ -99,9 +103,24 @@ export default function App() {
         </span>
         <span className="mx-2 text-zinc-700">|</span>
         <span className="font-mono-data">{mapPayload.date}</span>
+        {latestAvailable && (
+          <>
+            <span className="mx-2 text-zinc-700">|</span>
+            <span>
+              Latest available: <span data-testid="latest-available" className="font-mono-data">{latestAvailable}</span>
+            </span>
+          </>
+        )}
       </p>
     );
   };
+
+  const provenanceLine = () =>
+    provenance ? (
+      <p data-testid="provenance-line" className="text-xs text-zinc-500">
+        {provenance}
+      </p>
+    ) : null;
 
   const profileArea = () => {
     if (!selected) {
@@ -179,6 +198,7 @@ export default function App() {
 
         <section aria-label="Ocean field" className="space-y-1.5">
           {layerCaption()}
+          {provenanceLine()}
           <div className="relative z-0 h-[420px] overflow-hidden rounded-lg border border-zinc-800">{mapArea()}</div>
         </section>
 

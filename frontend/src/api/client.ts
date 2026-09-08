@@ -8,12 +8,15 @@
  */
 
 import type {
+  AvailabilityResponse,
+  CheckpointProvenance,
   Depth,
   HistoryResponse,
   MapPayload,
   PredictionEnvelope,
   ProfilePayload,
   Region,
+  RegionAvailability,
 } from '../types/contracts';
 import { CANONICAL_DEPTHS, REGION_IDS } from '../types/contracts';
 
@@ -174,6 +177,99 @@ function expectEnvelope(value: unknown, kind: 'map' | 'profile'): PredictionEnve
   };
 }
 
+function expectCheckpoint(value: unknown): CheckpointProvenance {
+  const c = requireObject(value, 'checkpoint');
+  for (const field of ['file', 'epoch', 'val_loss', 'generated_at'] as const) {
+    if (!(field in c)) throw new ContractError(`checkpoint missing required field: ${field}`);
+  }
+  if (
+    typeof c['file'] !== 'string' ||
+    typeof c['epoch'] !== 'number' ||
+    typeof c['val_loss'] !== 'number' ||
+    typeof c['generated_at'] !== 'string'
+  ) {
+    throw new ContractError('checkpoint: invalid field type');
+  }
+  return {
+    file: c['file'] as string,
+    epoch: c['epoch'] as number,
+    val_loss: c['val_loss'] as number,
+    generated_at: c['generated_at'] as string,
+  };
+}
+
+/** Availability report: NEVER trust the wire (RULE 6). Reject unknown regions,
+ * malformed dates, and any entry that claims data it cannot have. */
+function expectAvailability(value: unknown): AvailabilityResponse {
+  const b = requireObject(value, 'availability report');
+  if (!Array.isArray(b['regions']) || b['regions'].length === 0) {
+    throw new ContractError('availability: regions must be a non-empty array');
+  }
+  const regions = b['regions'].map(expectRegionAvailability);
+  const model = requireObject(b['model'], 'model');
+  for (const field of ['version', 'trained_on', 'data_version'] as const) {
+    if (typeof model[field] !== 'string') throw new ContractError(`availability model: missing ${field}`);
+  }
+  if (typeof b['generated_at'] !== 'string') throw new ContractError('availability: missing generated_at');
+  return {
+    regions,
+    model: {
+      version: model['version'] as string,
+      trained_on: model['trained_on'] as string,
+      data_version: model['data_version'] as string,
+    },
+    generated_at: b['generated_at'] as string,
+  };
+}
+
+function expectRegionAvailability(value: unknown): RegionAvailability {
+  const r = requireObject(value, 'region availability');
+  if (!REGION_IDS.includes(r['region'] as Region)) throw new ContractError('availability: unknown region id');
+  if (r['status'] !== 'available' && r['status'] !== 'no_data') {
+    throw new ContractError('availability: invalid status');
+  }
+  const dates = r['dates'];
+  if (!Array.isArray(dates) || !dates.every((d) => typeof d === 'string')) {
+    throw new ContractError('availability: dates must be an array of strings');
+  }
+  if (r['status'] === 'available') {
+    if ((dates as string[]).length === 0) throw new ContractError('availability: available region has no dates');
+    if (!(dates as string[]).every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))) {
+      throw new ContractError('availability: invalid date');
+    }
+    const grid = requireObject(r['grid'], 'grid');
+    for (const field of ['n_lat', 'n_lon', 'n_depths'] as const) {
+      if (typeof grid[field] !== 'number') throw new ContractError(`grid missing required field: ${field}`);
+    }
+    if (r['checkpoint'] === null || r['checkpoint'] === undefined) {
+      throw new ContractError('availability: available region must carry checkpoint provenance');
+    }
+  } else if ((dates as string[]).length > 0) {
+    throw new ContractError('availability: no_data region cannot carry dates');
+  }
+  const afterOptional = (v: unknown, missing: unknown): string | null =>
+    v === null || v === undefined ? (missing as string | null) : (v as string);
+
+  const dateStart = afterOptional(r['date_start'], dates[0] ?? null);
+  const dateEnd = afterOptional(r['date_end'], dates[(dates as string[]).length - 1] ?? null);
+  return {
+    region: r['region'] as Region,
+    status: r['status'] as RegionAvailability['status'],
+    dates: dates as string[],
+    date_start: dateStart !== null && /^\d{4}-\d{2}-\d{2}$/.test(dateStart) ? dateStart : null,
+    date_end: dateEnd !== null && /^\d{4}-\d{2}-\d{2}$/.test(dateEnd) ? dateEnd : null,
+    depths: r['status'] === 'available' ? [...CANONICAL_DEPTHS] : [],
+    variables: (Array.isArray(r['variables']) && r['variables'].every((v) => typeof v === 'string')
+      ? r['variables']
+      : []) as string[],
+    grid: r['status'] === 'available' ? (r['grid'] as unknown as RegionAvailability['grid']) : null,
+    model_version: typeof r['model_version'] === 'string' ? r['model_version'] : '',
+    trained_on: typeof r['trained_on'] === 'string' ? r['trained_on'] : '',
+    data_version: typeof r['data_version'] === 'string' ? r['data_version'] : '',
+    checkpoint: r['status'] === 'available' ? expectCheckpoint(r['checkpoint']) : null,
+  };
+}
+
 export class ApiClient {
   constructor(readonly baseUrl: string) {}
 
@@ -202,6 +298,11 @@ export class ApiClient {
       throw new ContractError('history: dates must be an array of strings');
     }
     return { region: b['region'] as string, dates: b['dates'] as string[] };
+  }
+
+  async getAvailability(): Promise<AvailabilityResponse> {
+    const body = await this._request('/availability');
+    return expectAvailability(body);
   }
 
   private async _request(path: string): Promise<unknown> {

@@ -83,3 +83,36 @@ export interface HistoryResponse {
   region: string;
   dates: string[];
 }
+
+export type RegionAvailabilityStatus = 'available' | 'no_data';
+
+/** Checkpoint provenance (availability.schema.json), truthful, never invented. */
+export interface CheckpointProvenance {
+  file: string;
+  epoch: number;
+  val_loss: number;
+  generated_at: string;
+}
+
+/** Per-region capability entry (availability.schema.json). */
+export interface RegionAvailability {
+  region: Region;
+  status: RegionAvailabilityStatus;
+  dates: string[];
+  date_start: string | null;
+  date_end: string | null;
+  depths: number[];
+  variables: string[];
+  grid: { n_lat: number; n_lon: number; n_depths: number } | null;
+  model_version: string;
+  trained_on: string;
+  data_version: string;
+  checkpoint: CheckpointProvenance | null;
+}
+
+/** GET /availability response. */
+export interface AvailabilityResponse {
+  regions: RegionAvailability[];
+  model: { version: string; trained_on: string; data_version: string };
+  generated_at: string;
+}
