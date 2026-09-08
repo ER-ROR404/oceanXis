@@ -125,8 +125,8 @@
 - Create: `frontend/src/App.tsx` (wire up all tabs/modes)
 - Test: `frontend/src/__tests__/e2e-explorer.test.tsx`
 
-- [ ] **Step 1: Write tests for ARGO summary table rendering and region 404 honest state**
-- [ ] **Step 2: Implement ArgoValidationPanel from `argo_validation_summary.json` asset**
-- [ ] **Step 3: Wire up App.tsx with full map → click → profile → ARGO workflow**
-- [ ] **Step 4: Run full vitest suite and build (`npm run build`)**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write tests for ARGO summary table rendering and region 404 honest state**
+- [x] **Step 2: Implement ArgoValidationPanel from `argo_validation_summary.json` asset**
+- [x] **Step 3: Wire up App.tsx with full map → click → profile → ARGO workflow**
+- [x] **Step 4: Run full vitest suite and build (`npm run build`)**
+- [x] **Step 5: Commit** (077db1e)
