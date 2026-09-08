@@ -153,6 +153,23 @@ class DemoCache:
             "metadata": metadata,
         }
 
+    def available_dates(self, region: str) -> list[str]:
+        """ISO dates the demo cache can serve for a region ([] when absent).
+
+        Shares the manifest that feeds fallback_demo, so the date list and
+        the servable payloads can never disagree (RULE 7: verified, not
+        guessed).
+        """
+        if not (self._cache_dir / region).is_dir():
+            return []
+        manifest = self._manifest or self._read_manifest()
+        if not manifest:
+            return []
+        declared = manifest.get("region")
+        if declared is not None and declared != region:
+            return []
+        return list(manifest.get("dates", []))
+
     def _read_manifest(self) -> dict[str, Any] | None:
         manifest_path = self._cache_dir / "manifest.json"
         if not manifest_path.exists():

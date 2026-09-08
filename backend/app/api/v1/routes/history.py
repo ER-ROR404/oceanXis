@@ -7,8 +7,9 @@ from typing import Any
 from fastapi import APIRouter, Query
 
 from app.domain.regions import REGION_IDS, get_region
-from app.schemas.error import DataNotAvailableError, InvalidRegionError
+from app.schemas.error import InvalidRegionError
 from app.services import InferenceClient
+from app.services.cache import DemoCache
 
 router = APIRouter(tags=["ocean"])
 
@@ -25,8 +26,13 @@ def get_ocean_history(
     try:
         dates = client.available_dates(region)
     except Exception:
-        raise DataNotAvailableError(
-            details={"region": region, "reason": "model service unavailable"}
-        ) from None
+        dates = []
+
+    if not dates:
+        # Model service is down (or has no coverage). Serve the same honest
+        # demo-cache dates that /ocean/map serves via fallback_demo, so the
+        # demo workflow stays drivable end to end. None available anywhere
+        # still yields 200 + [] — never fabricated dates (Phase 1 contract).
+        dates = DemoCache().available_dates(region)
 
     return {"region": region, "dates": sorted(dates)}

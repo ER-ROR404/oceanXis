@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+import app.api.v1.routes.history as history_route  # noqa: E402  (patching target)
 from app.main import create_app
 
 
@@ -59,6 +60,50 @@ class TestHistory:
         client = make_client()
         resp = client.get("/api/v1/ocean/history")
         assert resp.status_code == 422
+
+    def test_history_serves_demo_cache_dates_when_model_service_down(self, monkeypatch) -> None:
+        """The model service being down must not strand the demo: history
+        falls back to the same demo-cache manifest that fallback_demo uses,
+        so the frontend can still drive the map/profile workflow."""
+        scripted = {"dates": ["2023-06-01", "2023-09-07"]}
+
+        class FakeClient:
+            def available_dates(self, region: str) -> list[str]:
+                return []
+
+        class DemoFallback:
+            def available_dates(self, region: str) -> list[str]:
+                return list(scripted["dates"])
+
+        monkeypatch.setattr(history_route, "InferenceClient", lambda: FakeClient())
+        monkeypatch.setattr(history_route, "DemoCache", lambda settings=None: DemoFallback())
+
+        client = make_client()
+        body = client.get(
+            "/api/v1/ocean/history", params={"region": "bay_of_bengal"}
+        ).json()
+        assert body["dates"] == ["2023-06-01", "2023-09-07"]
+
+    def test_history_stays_empty_when_service_down_and_no_cache(self, monkeypatch) -> None:
+        """No data anywhere is still an honest empty list (Phase 1 contract:
+        200 + [], never fabricated dates)."""
+
+        class FakeClient:
+            def available_dates(self, region: str) -> list[str]:
+                return []
+
+        class NoDemo:
+            def available_dates(self, region: str) -> list[str]:
+                return []
+
+        monkeypatch.setattr(history_route, "InferenceClient", lambda: FakeClient())
+        monkeypatch.setattr(history_route, "DemoCache", lambda settings=None: NoDemo())
+
+        client = make_client()
+        body = client.get(
+            "/api/v1/ocean/history", params={"region": "bay_of_bengal"}
+        ).json()
+        assert body["dates"] == []
 
 
 class TestMetadata:

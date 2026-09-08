@@ -108,6 +108,20 @@ class TestDemoCache:
         cache = make_cache(tmp_path)
         assert cache.get_map("atlantis", "2024-01-10", 0) is None
 
+    def test_available_dates_reads_manifest_dates(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        assert cache.available_dates("bay_of_bengal") == ["2024-01-10"]
+
+    def test_available_dates_empty_without_dir(self, tmp_path) -> None:
+        cache = make_cache(tmp_path)
+        assert cache.available_dates("bay_of_bengal") == []
+
+    def test_available_dates_unknown_region_empty(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        assert cache.available_dates("atlantis") == []
+
     def test_get_map_surface_plane_values(self, tmp_path) -> None:
         """2D [lat][lon] values at depth 0; land cell is null, never 0.0 (D9)."""
         write_demo_cache(tmp_path, offset=1.0)
