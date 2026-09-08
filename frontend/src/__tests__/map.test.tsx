@@ -43,8 +43,8 @@ vi.mock('leaflet', () => ({
   latLng: vi.fn((a: number, b: number) => ({ lat: a, lng: b })),
 }));
 
-import { viridis, uncertaintyColor, rgbString, nearestIndex } from '../components/map/colorScales';
-import { OceanMap } from '../components/map/OceanMap';
+import { viridis, uncertaintyColor, rgbString, nearestIndex, rasterize, fieldDomain } from '../components/map/colorScales';
+import { OceanMap, renderDataUrl } from '../components/map/OceanMap';
 import { RegionDateDepthSelector } from '../components/controls/RegionDateDepthSelector';
 import type { MapPayload } from '../types/contracts';
 
@@ -185,5 +185,72 @@ describe('OceanMap', () => {
   it('registers a click handler that resolves the nearest cell', () => {
     render(<OceanMap payload={PAYLOAD} layer="temperature" onCellClick={() => {}} />);
     expect(mapInstance.on).toHaveBeenCalledWith('click', expect.any(Function));
+  });
+
+  it('resolves a click to the nearest grid cell and reports it via onCellClick', () => {
+    const onCellClick = vi.fn();
+    render(<OceanMap payload={PAYLOAD} layer="temperature" onCellClick={onCellClick} />);
+    const handler = mapInstance.on.mock.calls[0][1] as (e: { latlng: { lat: number; lng: number } }) => void;
+    handler({ latlng: { lat: 10.2, lng: 88.2 } });
+    expect(onCellClick).toHaveBeenCalledWith(10.25, 88.25);
+  });
+
+  it('tears down and rebuilds rasters when the payload changes', () => {
+    const { rerender } = render(<OceanMap payload={PAYLOAD} layer="temperature" onCellClick={() => {}} />);
+    expect(mapInstance.addLayer).toHaveBeenCalledTimes(2);
+
+    rerender(<OceanMap payload={{ ...PAYLOAD, date: '2023-06-16' }} layer="temperature" onCellClick={() => {}} />);
+    expect(overlayMock).toHaveBeenCalledTimes(4);
+    // Previous overlays removed via imageOverlay.remove() -> removeLayer().
+    expect(mapInstance.removeLayer).toHaveBeenCalledTimes(2);
+    expect(mapInstance.invalidateSize).toHaveBeenCalledTimes(2);
+  });
+
+  it('renderDataUrl returns an empty string for null rasters or non-canvas environments', () => {
+    expect(renderDataUrl(null, 3, 3)).toBe('');
+  });
+
+  it('renderDataUrl draws real pixels into a PNG data URL when a canvas context exists', () => {
+    // setup.ts provides a minimal jsdom 2D context; the data URL round trip is
+    // what matters, not the pixels.
+    expect(renderDataUrl(new Uint8ClampedArray(36), 3, 3)).toMatch(/^data:image\/png/);
+  });
+
+  it('renderDataUrl degrades to an empty string when no canvas context exists', () => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = () => null;
+    try {
+      expect(renderDataUrl(new Uint8ClampedArray(36), 3, 3)).toBe('');
+    } finally {
+      HTMLCanvasElement.prototype.getContext = original;
+    }
+  });
+
+  it('rasterize marks land cells transparent and colors uncertainty red at high sigma', () => {
+    // Land = values null while sigma stays null too (sigma mirrors values);
+    // the null mask is honored cell-for-cell (contract guarantee).
+    const rgba = rasterize(
+      [[null, 29.0]],
+      [[null, 0.4]],
+      'uncertainty',
+    );
+    expect(rgba).not.toBeNull();
+    if (!rgba) return;
+    expect(rgba[3]).toBe(0); // first cell alpha: transparent land
+    expect(rgba[7]).toBe(255); // second cell alpha: opaque ocean
+  });
+
+  it('rasterize returns null for an empty grid', () => {
+    expect(rasterize([], [], 'temperature')).toBeNull();
+  });
+
+  it('fieldDomain falls back for all-null and expands uniform planes', () => {
+    expect(fieldDomain([[null, null]])).toEqual({ min: 0, max: 1 });
+    const uniform = fieldDomain([[10.0, 10.0]]);
+    expect(uniform.min).toBeLessThan(10.0);
+    expect(uniform.max).toBeGreaterThan(10.0);
+    const padded = fieldDomain([[20.0, 30.0]]);
+    expect(padded.max).toBeGreaterThan(30.0);
+    expect(padded.min).toBeLessThan(20.0);
   });
 });

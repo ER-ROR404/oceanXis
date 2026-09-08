@@ -2,6 +2,8 @@ import type { PredictionStatus } from '../../types/contracts';
 
 interface StatusBannerProps {
   status: PredictionStatus | null;
+  /** Overrides the status's default detail when the caller has specifics (no-data region, error message). */
+  detail?: string | null;
 }
 
 const STATUS_COPY: Record<Exclude<PredictionStatus, null>, { label: string; detail: string; tone: string }> = {
@@ -28,7 +30,7 @@ const STATUS_COPY: Record<Exclude<PredictionStatus, null>, { label: string; deta
 };
 
 /** Honest status strip. aria-live so the status change is announced. Absent status keeps a reserved slot so the layout never jumps. */
-export function StatusBanner({ status }: StatusBannerProps) {
+export function StatusBanner({ status, detail }: StatusBannerProps) {
   if (status === null) {
     return (
       <div data-testid="status-banner" className="h-8 px-6" aria-hidden="true" aria-live="polite">
@@ -44,7 +46,7 @@ export function StatusBanner({ status }: StatusBannerProps) {
       className={`flex items-center gap-3 px-6 py-2 text-xs border-b ${copy.tone}`}
     >
       <span className="font-semibold">{copy.label}</span>
-      <span className="opacity-90">{copy.detail}</span>
+      <span className="opacity-90">{detail ?? copy.detail}</span>
     </div>
   );
 }

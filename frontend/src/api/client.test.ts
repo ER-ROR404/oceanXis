@@ -143,4 +143,100 @@ describe('ApiClient', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ nope: true }, 500)));
     await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
   });
+
+  it('throws ContractError when the response body is not JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('<html>proxy error</html>', { status: 502 })),
+    );
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError when an error envelope lacks code/message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ error: { oops: 'unstructured' } }, 500)),
+    );
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError on ragged grid rows', async () => {
+    const ragged = { ...MAP_OK, payload: { ...MAP_OK.payload, values: [[1, 2], [3]] } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(ragged)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError on a non-canonical depth value', async () => {
+    const bad = { ...MAP_OK, payload: { ...MAP_OK.payload, depth: 42 } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError when metadata.cached is not a boolean', async () => {
+    const bad = {
+      ...MAP_OK,
+      payload: { ...MAP_OK.payload, metadata: { ...MAP_OK.payload.metadata, cached: 'yes' } },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError when sigma does not mirror the values null mask', async () => {
+    // values[0][2] is null (land) but sigma[0][2] is a number: mask mismatch.
+    const bad = { ...MAP_OK, payload: { ...MAP_OK.payload, sigma: [[0.4, 0.4, 0.4], [0.4, 0.4, 0.4]] } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError when the map payload is not an object', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ...MAP_OK, payload: 'nope' })));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError on an unknown region id', async () => {
+    const bad = { ...MAP_OK, payload: { ...MAP_OK.payload, region: 'atlantis' } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError on a non-temperature channel', async () => {
+    const bad = { ...MAP_OK, payload: { ...MAP_OK.payload, channel: 'salinity' } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError on a malformed ISO date', async () => {
+    const bad = { ...MAP_OK, payload: { ...MAP_OK.payload, date: '2023-06-15T00:00:00Z' } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError on a sigma grid whose shape differs from values', async () => {
+    const bad = { ...MAP_OK, payload: { ...MAP_OK.payload, sigma: [[0.4]] } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError on an empty values grid', async () => {
+    const bad = { ...MAP_OK, payload: { ...MAP_OK.payload, values: [], sigma: [] } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError on non-numeric coordinates', async () => {
+    const bad = {
+      ...MAP_OK,
+      payload: { ...MAP_OK.payload, coordinates: { latitude: [10, 'x'], longitude: [88] } },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getMap('bay_of_bengal', '2023-06-15', 0)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('throws ContractError on a non-numeric profile latitude', async () => {
+    const bad = { ...PROFILE_OK, payload: { ...PROFILE_OK.payload, lat: '10' } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(bad)));
+    await expect(client.getProfile('bay_of_bengal', '2023-06-15', 10.0, 88.0)).rejects.toBeInstanceOf(
+      ContractError,
+    );
+  });
 });
