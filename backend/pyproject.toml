@@ -36,5 +36,5 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["app"]
-include = ["app*"]
+where = ["."]
+include = ["app*", "scripts*"]
