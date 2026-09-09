@@ -11,6 +11,6 @@ pyyaml>=6.0
 scipy>=1.12
 scikit-learn>=1.4
 pandas>=2.2
-dask[array]>=2024.1
+dask[array]>=2026.8.0
 tqdm>=4.66
 torch>=2.2
