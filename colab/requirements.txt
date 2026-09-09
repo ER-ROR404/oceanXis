@@ -3,7 +3,7 @@
 # Colab pre-installs a CUDA-enabled torch; `pip install -r` is idempotent and keeps it.
 # Keep this list in sync with ml/pyproject.toml.
 
-numpy>=1.26
+numpy>=2.4.6
 xarray>=2024.1
 netcdf4>=1.6
 zarr>=2.17
