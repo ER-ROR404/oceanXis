@@ -16,6 +16,22 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: false,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      // Entry bootstrap, type-only modules, fixtures and test files carry no
+      // executable logic; excluding them keeps the gate on instrumentable code.
+      exclude: [
+        'src/main.tsx',
+        'src/types/**',
+        'src/test/**',
+        'src/assets/**',
+        '**/*.d.ts',
+        '**/*.test.ts',
+        '**/*.test.tsx',
+        '**/__tests__/**',
+      ],
+    },
   },
   server: {
     port: 5173,

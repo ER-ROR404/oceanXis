@@ -24,6 +24,7 @@ HEALTH_OK = {
     "status": "ok",
     "model": "hybrid_v1",
     "version": "0.1.0",
+    "region": "bay_of_bengal",
     "dates": ["2022-01-01", "2022-01-02"],
 }
 
@@ -120,6 +121,37 @@ class TestAvailableDates:
 
         dates = make_client(handler).available_dates("bay_of_bengal")
         assert dates == ["2022-01-01", "2022-01-02"]
+
+    def test_available_dates_only_for_served_region(self) -> None:
+        """The health payload names the region the model service actually
+        serves (its loaded tensor store). Asking for any other region must
+        return [] — claiming its dates would be guessing (RULE 7)."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=HEALTH_OK)  # serves bay_of_bengal
+
+        assert make_client(handler).available_dates("arabian_sea") == []
+
+    def test_available_dates_missing_region_rejected(self) -> None:
+        """A health body without the served region cannot be trusted to answer
+        region-scoped availability questions — treat as malformed."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            bad = dict(HEALTH_OK)
+            bad.pop("region")
+            return httpx.Response(200, json=bad)
+
+        with pytest.raises(InferenceFailedError):
+            make_client(handler).available_dates("bay_of_bengal")
+
+    def test_health_missing_region_rejected(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            bad = dict(HEALTH_OK)
+            bad.pop("region")
+            return httpx.Response(200, json=bad)
+
+        with pytest.raises(InferenceFailedError):
+            make_client(handler).health()
 
     def test_available_dates_connect_error_returns_empty(self) -> None:
         """Honest degraded answer (Phase 1 contract: 200 with empty list)."""

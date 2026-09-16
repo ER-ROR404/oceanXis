@@ -18,6 +18,20 @@ describe('Header', () => {
     expect(screen.getByText('OCEANEMBED')).toBeInTheDocument();
     expect(screen.getByText('Subsurface Ocean Explorer')).toBeInTheDocument();
   });
+
+  it('labels the product as a historical reconstruction, never realtime', () => {
+    render(<Header />);
+    expect(screen.getByText(/Research prototype/i)).toBeInTheDocument();
+    expect(screen.getByText(/Historical reconstruction/i)).toBeInTheDocument();
+    expect(screen.queryByText(/realtime|live now/i)).toBeNull();
+  });
+
+  it('states the core value in the hero tagline', () => {
+    render(<Header />);
+    expect(screen.getByTestId('hero-tagline')).toHaveTextContent(
+      'Satellite-derived Surface Observations → Subsurface Temperature Reconstruction',
+    );
+  });
 });
 
 describe('StatusBanner', () => {

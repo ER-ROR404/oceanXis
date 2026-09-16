@@ -10,9 +10,11 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from app.api.v1.router import api_router
 from app.core.config import Settings
@@ -124,5 +126,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Mount API routers under /api/v1 per contracts/api/openapi.yaml.
     app.include_router(api_router, prefix="/api/v1")
+
+    # Serve built frontend if available
+    dist_path = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+    if dist_path.exists():
+        app.mount("/assets", StaticFiles(directory=str(dist_path / "assets")), name="assets")
+
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str):
+            if full_path.startswith("api/"):
+                # API paths must never return the SPA shell or an off-contract
+                # code. Raise so the registered 404 handler owns the envelope
+                # (UNKNOWN_ERROR) — identical whether or not dist exists.
+                raise HTTPException(status_code=404, detail="Not found")
+            index_file = dist_path / "index.html"
+            if index_file.exists():
+                return FileResponse(index_file)
+            return {"error": "Frontend not built"}
 
     return app

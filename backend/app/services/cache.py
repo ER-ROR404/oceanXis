@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import UTC, datetime
+try:
+    from datetime import UTC, datetime
+except ImportError:
+    from datetime import datetime, timezone
+    UTC = timezone.utc
 from typing import Any
 
 import numpy as np
@@ -36,10 +40,25 @@ class DemoCache:
         self._settings = settings or Settings()
         self._cache_dir = self._settings.demo_cache_dir
         self._manifest: dict[str, Any] | None = None
+        # NOTE: no bootstrap, no synthetic fallback. When the pre-built cache
+        # (ml/serving/build_demo_cache.py output) is absent, readers return
+        # None / [] and routes answer honestly (404/503). Fabricating
+        # analytic temperature fields here would be synthetic science data.
 
     @property
     def accessible(self) -> bool:
         return self._cache_dir.is_dir()
+
+    @property
+    def manifest(self) -> dict[str, Any] | None:
+        """Honest provenance manifest (checkpoint epoch/val_loss/generated_at).
+
+        Availability and payload metadata read this same manifest, so served
+        dates, checkpoint identity and grid shape can never disagree (RULE 7).
+        """
+        if self._manifest is None:
+            self._read_manifest()
+        return self._manifest
 
     def get_map(self, region: str, date: str, depth: int) -> dict[str, Any] | None:
         """Ocean-map payload for the pre-built cache entry, or None when absent.
@@ -152,6 +171,23 @@ class DemoCache:
             "sigma": sigma,
             "metadata": metadata,
         }
+
+    def available_dates(self, region: str) -> list[str]:
+        """ISO dates the demo cache can serve for a region ([] when absent).
+
+        Shares the manifest that feeds fallback_demo, so the date list and
+        the servable payloads can never disagree (RULE 7: verified, not
+        guessed).
+        """
+        if not (self._cache_dir / region).is_dir():
+            return []
+        manifest = self._manifest or self._read_manifest()
+        if not manifest:
+            return []
+        declared = manifest.get("region")
+        if declared is not None and declared != region:
+            return []
+        return list(manifest.get("dates", []))
 
     def _read_manifest(self) -> dict[str, Any] | None:
         manifest_path = self._cache_dir / "manifest.json"

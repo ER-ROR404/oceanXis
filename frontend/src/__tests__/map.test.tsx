@@ -1,51 +1,53 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render } from '@testing-library/react';
 
 // Mock Leaflet before importing components that use it. vi.hoisted keeps the
 // mock factories free of top-level closure references (vitest hoisting).
-const { overlayMock, mapInstance } = vi.hoisted(() => {
-  const overlayMock = vi.fn().mockImplementation(() => ({
-    setUrl: vi.fn(),
-    addTo: vi.fn(() => {
-      mapInstance.addLayer();
-    }),
-    remove: vi.fn(() => {
-      mapInstance.removeLayer();
-    }),
-    setOpacity: vi.fn(),
-    setZIndex: vi.fn(),
-    on: vi.fn(),
-    bringToFront: vi.fn(),
-  }));
+const { mapInstance, rectangleMock, overlayPane, popupMock } = vi.hoisted(() => {
+  const overlayPane = document.createElement('div');
+  const popupInstance = {
+    setLatLng: vi.fn().mockReturnThis(),
+    setContent: vi.fn().mockReturnThis(),
+    openOn: vi.fn().mockReturnThis(),
+  };
+  const popupMock = vi.fn(() => popupInstance);
   const mapInstance = {
     setView: vi.fn().mockReturnThis(),
-    addLayer: vi.fn().mockReturnThis(),
-    removeLayer: vi.fn().mockReturnThis(),
     on: vi.fn().mockReturnThis(),
+    off: vi.fn().mockReturnThis(),
     remove: vi.fn().mockReturnThis(),
     invalidateSize: vi.fn().mockReturnThis(),
+    fitBounds: vi.fn().mockReturnThis(),
+    closePopup: vi.fn().mockReturnThis(),
+    getSize: vi.fn(() => ({ x: 800, y: 600 })),
+    getPanes: vi.fn(() => ({ overlayPane })),
+    latLngToContainerPoint: vi.fn(([lat, lon]: [number, number]) => ({ x: lon, y: -lat })),
+    containerPointToLayerPoint: vi.fn(([x, y]: [number, number]) => ({ x, y })),
   };
-  return { overlayMock, mapInstance };
+  const rectangleMock = vi.fn().mockImplementation(() => ({
+    addTo: vi.fn(),
+    remove: vi.fn(),
+  }));
+  return { mapInstance, rectangleMock, overlayPane, popupMock };
 });
 
 vi.mock('leaflet', () => ({
   default: {
     map: vi.fn(() => mapInstance),
     tileLayer: vi.fn(() => ({ addTo: vi.fn() })),
-    imageOverlay: overlayMock,
-    latLngBounds: vi.fn(),
-    latLng: vi.fn((a: number, b: number) => ({ lat: a, lng: b })),
+    rectangle: rectangleMock,
+    popup: popupMock,
+    control: { zoom: vi.fn(() => ({ addTo: vi.fn() })) },
   },
   map: vi.fn(() => mapInstance),
   tileLayer: vi.fn(() => ({ addTo: vi.fn() })),
-  imageOverlay: overlayMock,
-  latLngBounds: vi.fn(),
-  latLng: vi.fn((a: number, b: number) => ({ lat: a, lng: b })),
+  rectangle: rectangleMock,
+  popup: popupMock,
+  control: { zoom: vi.fn(() => ({ addTo: vi.fn() })) },
 }));
 
-import { viridis, uncertaintyColor, rgbString, nearestIndex } from '../components/map/colorScales';
-import { OceanMap } from '../components/map/OceanMap';
-import { RegionDateDepthSelector } from '../components/controls/RegionDateDepthSelector';
+import { viridis, uncertaintyColor, rgbString, nearestIndex, fieldDomain } from '../components/map/colorScales';
+import { OceanMap, cellBounds, gridBounds } from '../components/map/OceanMap';
 import type { MapPayload } from '../types/contracts';
 
 const PAYLOAD: MapPayload = {
@@ -104,57 +106,13 @@ describe('nearestIndex', () => {
   });
 });
 
-describe('RegionDateDepthSelector', () => {
-  it('renders region, date and depth controls with labels', () => {
-    render(
-      <RegionDateDepthSelector
-        region="bay_of_bengal"
-        date="2023-06-15"
-        depth={0}
-        dates={['2023-06-15', '2023-06-16']}
-        onRegionChange={() => {}}
-        onDateChange={() => {}}
-        onDepthChange={() => {}}
-      />,
-    );
-    expect(screen.getByLabelText(/region/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/date/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/depth/i)).toBeInTheDocument();
-  });
-
-  it('fires callbacks on user changes', () => {
-    const onRegion = vi.fn();
-    const onDate = vi.fn();
-    const onDepth = vi.fn();
-    render(
-      <RegionDateDepthSelector
-        region="bay_of_bengal"
-        date="2023-06-15"
-        depth={0}
-        dates={['2023-06-15', '2023-06-16']}
-        onRegionChange={onRegion}
-        onDateChange={onDate}
-        onDepthChange={onDepth}
-      />,
-    );
-    const dense = screen.getByLabelText(/date/i);
-    fireEvent.change(dense, { target: { value: '2023-06-16' } });
-    expect(onDate).toHaveBeenCalledWith('2023-06-16');
-
-    const depthSel = screen.getByLabelText(/depth/i);
-    fireEvent.change(depthSel, { target: { value: '100' } });
-    expect(onDepth).toHaveBeenCalledWith(100);
-
-    const regionSel = screen.getByLabelText(/region/i);
-    fireEvent.change(regionSel, { target: { value: 'arabian_sea' } });
-    expect(onRegion).toHaveBeenCalledWith('arabian_sea');
-  });
-});
-
 describe('OceanMap', () => {
   beforeEach(() => {
-    (Object.values(mapInstance) as ReturnType<typeof vi.fn>[]).forEach((fn) => fn.mockClear());
-    overlayMock.mockClear();
+    (Object.values(mapInstance) as ReturnType<typeof vi.fn>[]).forEach((fn) => {
+      if (typeof fn.mockClear === 'function') fn.mockClear();
+    });
+    rectangleMock.mockClear();
+    overlayPane.innerHTML = '';
   });
 
   it('renders the Leaflet host div with an aria label', () => {
@@ -165,25 +123,103 @@ describe('OceanMap', () => {
     expect(container.querySelector('[aria-label="Ocean map"]')).not.toBeNull();
   });
 
-  it('registers two raster layers (temperature + uncertainty)', () => {
+  it('attaches a single canvas layer (no image overlays, no stretched <img>)', () => {
     render(<OceanMap payload={PAYLOAD} layer="temperature" onCellClick={() => {}} />);
-    expect(overlayMock).toHaveBeenCalledTimes(2);
+    expect(overlayPane.querySelectorAll('canvas')).toHaveLength(1);
   });
 
-  it('toggles overlay visibility when the active layer changes', () => {
+  it('reuses the same canvas across layer and payload switches', () => {
     const { rerender } = render(<OceanMap payload={PAYLOAD} layer="temperature" onCellClick={() => {}} />);
-    expect(mapInstance.addLayer).toHaveBeenCalledTimes(2);
-    expect(mapInstance.removeLayer).not.toHaveBeenCalled();
-
     rerender(<OceanMap payload={PAYLOAD} layer="uncertainty" onCellClick={() => {}} />);
-    // Same rasters kept; visibility driven by setOpacity (no rebuild).
-    expect(mapInstance.addLayer).toHaveBeenCalledTimes(2);
-    expect(mapInstance.removeLayer).not.toHaveBeenCalled();
-    expect(mapInstance.invalidateSize).toHaveBeenCalledTimes(1);
+    rerender(<OceanMap payload={{ ...PAYLOAD, date: '2023-06-16' }} layer="uncertainty" onCellClick={() => {}} />);
+    // One canvas element: values swap, nothing reattaches.
+    expect(overlayPane.querySelectorAll('canvas')).toHaveLength(1);
+    expect(mapInstance.invalidateSize).toHaveBeenCalled();
   });
 
-  it('registers a click handler that resolves the nearest cell', () => {
-    render(<OceanMap payload={PAYLOAD} layer="temperature" onCellClick={() => {}} />);
+  it('fits the viewport to the served domain on load, not on depth-only change', () => {
+    const { rerender } = render(<OceanMap payload={PAYLOAD} layer="temperature" onCellClick={() => {}} />);
+    expect(mapInstance.fitBounds).toHaveBeenCalledTimes(1);
+    // Same region+date, new depth slice: viewport untouched (§35).
+    rerender(<OceanMap payload={{ ...PAYLOAD, depth: 200 }} layer="temperature" onCellClick={() => {}} />);
+    expect(mapInstance.fitBounds).toHaveBeenCalledTimes(1);
+    // New date: refit to the domain (§5).
+    rerender(<OceanMap payload={{ ...PAYLOAD, date: '2023-06-16' }} layer="temperature" onCellClick={() => {}} />);
+    expect(mapInstance.fitBounds).toHaveBeenCalledTimes(2);
+  });
+
+  it('refits on an explicit reset-view signal without reattaching the canvas', () => {
+    const { rerender } = render(<OceanMap payload={PAYLOAD} layer="temperature" resetSignal={0} onCellClick={() => {}} />);
+    const fits = (mapInstance.fitBounds as ReturnType<typeof vi.fn>).mock.calls.length;
+    rerender(<OceanMap payload={PAYLOAD} layer="temperature" resetSignal={1} onCellClick={() => {}} />);
+    expect((mapInstance.fitBounds as ReturnType<typeof vi.fn>).mock.calls.length).toBe(fits + 1);
+    expect(overlayPane.querySelectorAll('canvas')).toHaveLength(1);
+  });
+
+  it('registers click + hover handlers that resolve the nearest cell', () => {
+    render(<OceanMap payload={PAYLOAD} layer="temperature" selected={null} onCellClick={() => {}} onHover={() => {}} />);
     expect(mapInstance.on).toHaveBeenCalledWith('click', expect.any(Function));
+    expect(mapInstance.on).toHaveBeenCalledWith('mousemove', expect.any(Function));
+  });
+
+  it('reports hovered cell value + sigma for the compact tooltip', () => {
+    const onHover = vi.fn();
+    render(<OceanMap payload={PAYLOAD} layer="temperature" selected={null} onCellClick={() => {}} onHover={onHover} />);
+    const move = mapInstance.on.mock.calls.find((c) => c[0] === 'mousemove')?.[1] as
+      | ((e: { latlng: { lat: number; lng: number }; containerPoint: { x: number; y: number } }) => void)
+      | undefined;
+    expect(move).toBeDefined();
+    move!({ latlng: { lat: 10.2, lng: 88.2 }, containerPoint: { x: 50, y: 60 } });
+    expect(onHover).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: 10.25, lon: 88.25, value: 28.7, sigma: 0.5, x: 50, y: 60 }),
+    );
+  });
+
+  it('draws no domain frame: only the selected cell gets a rectangle', () => {
+    render(<OceanMap payload={PAYLOAD} layer="temperature" selected={null} onCellClick={() => {}} onHover={() => {}} />);
+    // No box around the field; valid cells alone define the visible layer.
+    expect(rectangleMock).not.toHaveBeenCalled();
+    expect(gridBounds(PAYLOAD.coordinates)).toEqual([
+      [10.0, 88.0],
+      [10.25, 88.5],
+    ]);
+  });
+
+  it('draws a selected-cell rectangle snapped to the 0.25° cell', () => {
+    render(<OceanMap payload={PAYLOAD} layer="temperature" selected={{ lat: 10.25, lon: 88.25 }} onCellClick={() => {}} onHover={() => {}} />);
+    expect(rectangleMock).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.arrayContaining([expect.any(Number), expect.any(Number)])]),
+      expect.objectContaining({ color: '#2dd4bf' }),
+    );
+    expect(cellBounds(10.25, 88.25)).toEqual([
+      [10.125, 88.125],
+      [10.375, 88.375],
+    ]);
+  });
+  it('opens a value popup with the snapped coordinate and reading on click', () => {
+    const onCellClick = vi.fn();
+    render(<OceanMap payload={PAYLOAD} layer="temperature" onCellClick={onCellClick} />);
+    popupMock.mockClear();
+    const handler = mapInstance.on.mock.calls.find((c) => c[0] === 'click')?.[1] as (e: { latlng: { lat: number; lng: number } }) => void;
+    handler({ latlng: { lat: 10.2, lng: 88.2 } });
+    expect(popupMock).toHaveBeenCalledTimes(1);
+    expect(onCellClick).toHaveBeenCalledWith(10.25, 88.25);
+  });
+
+  it('resolves a click to the nearest grid cell and reports it via onCellClick', () => {
+    const onCellClick = vi.fn();
+    render(<OceanMap payload={PAYLOAD} layer="temperature" onCellClick={onCellClick} />);
+    const handler = mapInstance.on.mock.calls.find((c) => c[0] === 'click')?.[1] as (e: { latlng: { lat: number; lng: number } }) => void;
+    handler({ latlng: { lat: 10.2, lng: 88.2 } });
+    expect(onCellClick).toHaveBeenCalledWith(10.25, 88.25);
+  });
+
+  it('fieldDomain uses valid ocean values exactly (no padding artifacts)', () => {
+    expect(fieldDomain([[null, null]])).toEqual({ min: 0, max: 1 });
+    const uniform = fieldDomain([[10.0, 10.0]]);
+    expect(uniform.min).toBeLessThan(10.0);
+    expect(uniform.max).toBeGreaterThan(10.0);
+    // Null land is excluded; min/max are the true valid extremes.
+    expect(fieldDomain([[null, 20.0], [30.0, null]])).toEqual({ min: 20.0, max: 30.0 });
   });
 });

@@ -53,6 +53,15 @@ class TestHealth:
         assert body["model"] == "hybrid_v1"
         assert "dates" in body
 
+    def test_health_reports_served_region(self, server):
+        """Health names the region the loaded tensor store serves so the backend
+        never answers region-scoped availability with another region's dates."""
+        resp = server.get("/health")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["region"] == "bay_of_bengal"
+        assert isinstance(body["dates"], list)
+
     def test_health_503_when_no_checkpoint(self, tmp_path, serving_region, cfg, monkeypatch):
         """Model not loaded -> 503 with a typed code (honest, not 200)."""
         import shutil
@@ -105,6 +114,20 @@ class TestPredict:
         resp = server.post("/predict", json={"region": "atlantis", "date": "2024-01-12"})
         assert resp.status_code == 404
         assert resp.json()["code"] == "DATA_NOT_AVAILABLE"
+
+    @pytest.mark.parametrize("region", ["arabian_sea", "north_indian_ocean"])
+    def test_predict_declared_but_unserved_region_404(self, server, region):
+        """Regression (phase-5.1 checkpoint): a region declared in REGIONS but
+        NOT served by the loaded tensor store must 404 DATA_NOT_AVAILABLE —
+        it must never predict with the bay_of_bengal store relabeled."""
+        resp = server.post("/predict", json={"region": region, "date": "2024-01-12"})
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["status"] == "error"
+        assert body["code"] == "DATA_NOT_AVAILABLE"
+        assert body["region"] == region
+        assert "mu" not in body
+        assert "latitude" not in body
 
     def test_predict_bad_date_404(self, server):
         resp = server.post("/predict", json={"region": "bay_of_bengal", "date": "2030-01-01"})
@@ -173,6 +196,21 @@ class TestPredictProfile:
         )
         assert resp.status_code == 404
         assert resp.json()["code"] == "DATA_NOT_AVAILABLE"
+
+    @pytest.mark.parametrize("region", ["arabian_sea", "north_indian_ocean"])
+    def test_predict_profile_declared_but_unserved_region_404(self, server, region):
+        """Predict-profile must mirror the predict guard: no cross-region
+        prediction for declared-but-unserved regions (phase-5.1 regression)."""
+        resp = server.post(
+            "/predict_profile",
+            json={"region": region, "date": "2024-01-12", "lat": 12.0, "lon": 90.0},
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["status"] == "error"
+        assert body["code"] == "DATA_NOT_AVAILABLE"
+        assert body["region"] == region
+        assert "temperatures" not in body
 
     def test_predict_profile_missing_fields_422(self, server):
         resp = server.post("/predict_profile", json={"region": "bay_of_bengal", "date": "2024-01-12"})

@@ -56,6 +56,7 @@ dist/
 .coverage
 coverage.xml
 htmlcov/
+uv.lock
 
 # Virtual environments
 .venv/
@@ -90,6 +91,8 @@ data/manifests/*.generated.json
 
 # Test coverage and reports
 *.xml
+coverage/
+frontend/coverage/
 
 # Keep the exception explicit:
 #   small synthetic fixtures under tests/fixtures/ MAY be committed.

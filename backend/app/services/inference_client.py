@@ -100,11 +100,12 @@ class InferenceClient:
     def available_dates(self, region: str) -> list[str]:
         """ISO dates covered by the region's tensor store.
 
-        Honest degraded behavior: when the model service is down or the model
-        is not loaded, returns an empty list (Phase 1 contract: 200 + []).
-        Only a malformed 200 response raises (surfacing a real bug).
+        Honest degraded behavior: when the model service is down, the model is
+        not loaded, or the service serves a different region, returns an empty
+        list (Phase 1 contract: 200 + []). Claiming another region's dates as
+        this region's coverage would be guessing (RULE 7). Only a malformed
+        200 response raises (surfacing a real bug).
         """
-        del region
         try:
             resp = self._client.get("/health")
         except httpx.HTTPError:
@@ -118,6 +119,8 @@ class InferenceClient:
             raise InferenceFailedError(
                 details={"service": "ml-inference", "reason": f"malformed health response: {exc}"}
             ) from exc
+        if body["region"] != region:
+            return []
         return list(body["dates"])
 
     def predict_map(self, region: str, date: str) -> dict[str, Any]:
@@ -195,9 +198,16 @@ class InferenceClient:
 
 
 def _validate_health_body(body: Any) -> None:
-    """Contract shape: {status: "ok", dates: [iso...]}."""
+    """Contract shape: {status: "ok", region: <served region>, dates: [iso...]}.
+
+    ``region`` names the tensor store the model service actually loaded; the
+    backend must never answer region-scoped questions with a different
+    region's dates (RULE 7: verified, not guessed).
+    """
     if not isinstance(body, dict) or body.get("status") != "ok":
         raise ValueError("health status != ok")
+    if not isinstance(body.get("region"), str) or not body["region"]:
+        raise ValueError("health region must be a non-empty string")
     dates = body.get("dates")
     if not isinstance(dates, list) or not all(isinstance(d, str) and len(d) == 10 for d in dates):
         raise ValueError("health dates must be a list of ISO strings")

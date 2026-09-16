@@ -108,6 +108,44 @@ class TestDemoCache:
         cache = make_cache(tmp_path)
         assert cache.get_map("atlantis", "2024-01-10", 0) is None
 
+    def test_available_dates_reads_manifest_dates(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        assert cache.available_dates("bay_of_bengal") == ["2024-01-10"]
+
+    def test_available_dates_empty_without_dir(self, tmp_path) -> None:
+        cache = make_cache(tmp_path)
+        assert cache.available_dates("bay_of_bengal") == []
+
+    def test_constructor_never_fabricates_cache_files(self, tmp_path) -> None:
+        """No synthetic data, ever: constructing DemoCache on an empty dir must
+        not create region dirs, coordinates, npz files, or a manifest. Missing
+        data stays missing (honest unavailable), never fabricated."""
+        target = tmp_path / "empty-cache"
+        cache = DemoCache(settings=Settings(demo_cache_dir=str(target)))
+        assert not (target / "bay_of_bengal").exists()
+        assert not (target / "manifest.json").exists()
+        assert cache.manifest is None
+        assert cache.get_map("bay_of_bengal", "2023-09-01", 100) is None
+        assert cache.get_profile("bay_of_bengal", "2023-09-01", 15.0, 90.0) is None
+
+    def test_available_dates_unknown_region_empty(self, tmp_path) -> None:
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        assert cache.available_dates("atlantis") == []
+
+    def test_manifest_property_exposes_loaded_manifest(self, tmp_path) -> None:
+        """Public manifest accessor: availability/provenance reads the same
+        manifest that feeds fallback_demo (never a second copy of the truth)."""
+        write_demo_cache(tmp_path)
+        cache = make_cache(tmp_path)
+        manifest = cache.manifest
+        assert manifest is not None
+        assert manifest["region"] == "bay_of_bengal"
+        assert manifest["epoch"] == 83
+        assert manifest["val_loss"] == 0.3715
+        assert manifest["checkpoint"] == "best.pt"
+
     def test_get_map_surface_plane_values(self, tmp_path) -> None:
         """2D [lat][lon] values at depth 0; land cell is null, never 0.0 (D9)."""
         write_demo_cache(tmp_path, offset=1.0)

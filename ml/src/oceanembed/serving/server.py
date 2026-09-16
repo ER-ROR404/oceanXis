@@ -124,6 +124,7 @@ def create_app() -> FastAPI:
             "status": "ok",
             "model": "hybrid_v1",
             "version": SERVICE_VERSION,
+            "region": svc.region_dir.name,
             "dates": svc.available_dates(),
         }
 
@@ -135,7 +136,9 @@ def create_app() -> FastAPI:
                 status_code=503,
                 content={"status": "error", "code": MODEL_NOT_LOADED},
             )
-        if req.region not in REGIONS:
+        # Predict only for the tensor store actually loaded: a region that is
+        # declared but not served must 404, never predict with another store.
+        if req.region != svc.region_dir.name:
             return JSONResponse(
                 status_code=404,
                 content={"status": "error", "code": DATA_NOT_AVAILABLE, "region": req.region},
@@ -170,7 +173,9 @@ def create_app() -> FastAPI:
                 status_code=503,
                 content={"status": "error", "code": MODEL_NOT_LOADED},
             )
-        if req.region not in REGIONS:
+        # Predict only for the tensor store actually loaded: a region that is
+        # declared but not served must 404, never predict with another store.
+        if req.region != svc.region_dir.name:
             return JSONResponse(
                 status_code=404,
                 content={"status": "error", "code": DATA_NOT_AVAILABLE, "region": req.region},

@@ -1,129 +1,223 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import type { MapPayload } from '../../types/contracts';
-import { rasterize, nearestIndex } from './colorScales';
+import 'leaflet/dist/leaflet.css';
+import type { Coordinates, MapPayload } from '../../types/contracts';
+import type { SelectedCell } from '../../hooks/useOceanExplorer';
+import { nearestIndex } from './colorScales';
+import { CellCanvas, buildFieldGrid, type CanvasMapLike } from './CellCanvasLayer';
+import { GRID_STEP } from '../../utils/globe';
 
 export type LayerMode = 'temperature' | 'uncertainty';
+
+export interface MapHover {
+  lat: number;
+  lon: number;
+  value: number | null;
+  sigma: number | null;
+  /** Container pixel position for the tooltip. */
+  x: number;
+  y: number;
+}
+
+type SnappedCell = { lat: number; lon: number; value: number | null; sigma: number | null };
+
+/** Value popup at the clicked cell (reference-viewer point inspection). */
+function openValuePopup(map: L.Map, cell: SnappedCell, payload: MapPayload): void {
+  const reading =
+    cell.value === null || cell.sigma === null
+      ? 'no data'
+      : `${cell.value.toFixed(2)} °C ±${cell.sigma.toFixed(2)}`;
+  L.popup({ closeButton: true, maxWidth: 240 })
+    .setLatLng([cell.lat, cell.lon])
+    .setContent(
+      `<div style="font-family:monospace;font-size:12px;line-height:1.5">` +
+        `<div style="color:#2dd4bf;font-weight:600">${cell.lat.toFixed(2)}°N · ${cell.lon.toFixed(2)}°E</div>` +
+        `<div>${reading}</div>` +
+        `<div style="opacity:.6">${payload.depth} m · ${payload.date}</div></div>`,
+    )
+    .openOn(map);
+}
 
 interface OceanMapProps {
   payload: MapPayload;
   layer: LayerMode;
+  selected?: SelectedCell | null;
   onCellClick: (lat: number, lon: number) => void;
+  onHover?: (hover: MapHover | null) => void;
+  /** Increment to refit the viewport to the reconstruction domain. */
+  resetSignal?: number;
+}
+
+/** Leaflet bounds of one 0.25° cell centered on (lat, lon). */
+export function cellBounds(lat: number, lon: number): [[number, number], [number, number]] {
+  const half = GRID_STEP / 2;
+  return [
+    [lat - half, lon - half],
+    [lat + half, lon + half],
+  ];
+}
+
+/** Leaflet bounds of the full reconstruction grid (south-west, north-east). */
+export function gridBounds(coordinates: Coordinates): [[number, number], [number, number]] {
+  const lats = coordinates.latitude;
+  const lons = coordinates.longitude;
+  return [
+    [Math.min(...lats), Math.min(...lons)],
+    [Math.max(...lats), Math.max(...lons)],
+  ];
+}
+
+function snapCell(payload: MapPayload, lat: number, lon: number): SnappedCell {
+  const latRow = nearestIndex(payload.coordinates.latitude, lat);
+  const lonCol = nearestIndex(payload.coordinates.longitude, lon);
+  return {
+    lat: payload.coordinates.latitude[latRow],
+    lon: payload.coordinates.longitude[lonCol],
+    value: payload.values[latRow]?.[lonCol] ?? null,
+    sigma: payload.sigma[latRow]?.[lonCol] ?? null,
+  };
 }
 
 /**
  * Leaflet map showing the gridded temperature or uncertainty field.
  *
- * Temperature uses the viridis scale; uncertainty the yellow->red scale
- * (frontend/DESIGN.md). Land cells stay transparent (honest: no fabricated
- * values). A click on the field resolves the nearest grid cell and reports the
- * snapped center, matching backend profile semantics.
+ * The field is rendered by a projection-bound canvas layer that interpolates
+ * between the real 0.25° cells — never a stretched raster image, never a
+ * domain-frame box. Land and missing cells stay transparent, so the basemap
+ * coastline shows through and the temperature layer hugs the coast. Click and
+ * hover resolve the nearest grid cell and report the snapped center, matching
+ * backend profile semantics. The selected cell is outlined with a teal
+ * rectangle.
  */
-export function OceanMap({ payload, layer, onCellClick }: OceanMapProps) {
+export function OceanMap({ payload, layer, selected = null, onCellClick, onHover, resetSignal = 0 }: OceanMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const overlaysRef = useRef<Record<LayerMode, L.ImageOverlay | null>>({
-    temperature: null,
-    uncertainty: null,
-  });
+  const cellLayerRef = useRef<CellCanvas | null>(null);
+  const markerRef = useRef<L.Rectangle | null>(null);
+  const payloadRef = useRef(payload);
+  payloadRef.current = payload;
   const clickRef = useRef(onCellClick);
   clickRef.current = onCellClick;
+  const layerRef = useRef(layer);
+  layerRef.current = layer;
+  const hoverRef = useRef<((hover: MapHover | null) => void) | null>(onHover ?? null);
+  hoverRef.current = onHover ?? null;
+  const fitKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host || mapRef.current) return;
 
-    const map = L.map(host, { attributionControl: false, zoomControl: true }).setView(
-      [15, 80],
-      5,
-    );
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      maxZoom: 8,
-    }).addTo(map);
+    let map: L.Map | null = null;
+    try {
+      map = L.map(host, { attributionControl: false, zoomControl: false }).setView(
+        [13.5, 90],
+        5,
+      );
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+        maxZoom: 10,
+      }).addTo(map);
+    } catch {
+      return; // non-Leaflet test env: host div + legend still render honestly.
+    }
     mapRef.current = map;
 
+    const cells = new CellCanvas(null, { opacity: 0.85 });
+    cells.attach(map as unknown as CanvasMapLike);
+    cellLayerRef.current = cells;
+
     map.on('click', (e: L.LeafletMouseEvent) => {
-      const { payload: p } = { payload };
-      const latRow = nearestIndex(p.coordinates.latitude, e.latlng.lat);
-      const lonCol = nearestIndex(p.coordinates.longitude, e.latlng.lng);
-      clickRef.current(
-        p.coordinates.latitude[latRow],
-        p.coordinates.longitude[lonCol],
-      );
+      const current = payloadRef.current;
+      const cell = snapCell(current, e.latlng.lat, e.latlng.lng);
+      openValuePopup(map, cell, current);
+      clickRef.current(cell.lat, cell.lon);
+    });
+    map.on('mousemove', (e: L.LeafletMouseEvent) => {
+      if (!hoverRef.current) return;
+      const cell = snapCell(payloadRef.current, e.latlng.lat, e.latlng.lng);
+      hoverRef.current({ ...cell, x: e.containerPoint.x, y: e.containerPoint.y });
+    });
+    map.on('mouseout', () => {
+      hoverRef.current?.(null);
     });
   }, []);
 
-  // Build the two raster overlays (temperature + uncertainty) whenever the
-  // payload reference changes; then apply the active-layer visibility.
+  // Field data: rebuild the interpolated color grid whenever the payload or
+  // the active layer changes. The same canvas is reused — no reattach. Viewport
+  // framing only on region/date change (user pan/zoom kept).
+  useEffect(() => {
+    const map = mapRef.current;
+    const cells = cellLayerRef.current;
+    if (!map || !cells) return;
+    const { coordinates, values, sigma } = payload;
+    if (values.length === 0 || (values[0]?.length ?? 0) === 0) return;
+    cells.setField(buildFieldGrid(values, sigma, coordinates.latitude, coordinates.longitude, layerRef.current));
+    // Stale point popups never outlive their data.
+    try {
+      map.closePopup();
+    } catch {
+      // Non-Leaflet test env: no-op.
+    }
+
+    const fitKey = `${payload.region}|${payload.date}`;
+    if (fitKeyRef.current !== fitKey) {
+      fitKeyRef.current = fitKey;
+      try {
+        map.fitBounds(gridBounds(coordinates), { padding: [12, 12], animate: false });
+      } catch {
+        // Test envs without a real view: bounds still computed honestly.
+      }
+    }
+    map.invalidateSize();
+  }, [payload, layer]);
+
+  // Explicit reset-view signal (§21): refit without touching data or cells.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || resetSignal <= 0) return;
+    try {
+      map.fitBounds(gridBounds(payloadRef.current.coordinates), { padding: [12, 12], animate: false });
+    } catch {
+      // Non-Leaflet test env: no-op.
+    }
+  }, [resetSignal]);
+
+  // Selected-cell outline: redrawn without touching the field cells.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const { coordinates, values, sigma } = payload;
-    const h = values.length;
-    const w = values[0]?.length ?? 0;
-    if (h === 0 || w === 0) return;
-
-    const bounds = L.latLngBounds(
-      [coordinates.latitude[h - 1], coordinates.longitude[0]],
-      [coordinates.latitude[0], coordinates.longitude[w - 1]],
-    );
-
-    const makeOverlay = (mode: LayerMode): L.ImageOverlay => {
-      const rgba = rasterize(values, sigma, mode);
-      const url = renderDataUrl(rgba, w, h);
-      return L.imageOverlay(url, bounds, { opacity: 0.85, interactive: true });
-    };
-
-    (Object.keys(overlaysRef.current) as LayerMode[]).forEach((m) => {
-      const prev = overlaysRef.current[m];
-      if (prev) {
-        prev.remove();
-        overlaysRef.current[m] = null;
-      }
+    markerRef.current?.remove();
+    markerRef.current = null;
+    if (!selected) return;
+    const marker = L.rectangle(cellBounds(selected.lat, selected.lon), {
+      color: '#2dd4bf',
+      weight: 2,
+      fill: false,
+      interactive: false,
     });
-
-    (['temperature', 'uncertainty'] as LayerMode[]).forEach((m) => {
-      const ov = makeOverlay(m);
-      overlaysRef.current[m] = ov;
-      ov.addTo(map);
-    });
-    map.invalidateSize();
-  }, [payload]);
-
-  // Active-layer toggle: keep both rasters, show only the requested one.
-  useEffect(() => {
-    overlaysRef.current.temperature?.setOpacity(layer === 'temperature' ? 0.85 : 0);
-    overlaysRef.current.uncertainty?.setOpacity(layer === 'uncertainty' ? 0.85 : 0);
-  }, [layer]);
+    marker.addTo(map);
+    markerRef.current = marker;
+  }, [selected, payload]);
 
   useEffect(() => {
     return () => {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      cellLayerRef.current?.detach();
+      cellLayerRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
-      overlaysRef.current = { temperature: null, uncertainty: null };
     };
   }, []);
 
   return (
     <div
       ref={hostRef}
+      data-testid="map-host"
       aria-label="Ocean map"
-      className="h-[420px] w-full rounded-lg border border-zinc-800 bg-zinc-900"
+      className="h-full min-h-[420px] w-full bg-zinc-900"
     />
   );
-}
-
-/** Render the RGBA raster to an inline PNG data URL for imageOverlay. */
-export function renderDataUrl(rgba: Uint8ClampedArray | null, w: number, h: number): string {
-  if (rgba === null) return '';
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return ''; // non-canvas test env: transparent overlay is honest no-op
-  const img = ctx.createImageData(w, h);
-  img.data.set(rgba);
-  ctx.putImageData(img, 0, 0);
-  return canvas.toDataURL('image/png');
 }

@@ -2,9 +2,15 @@
 
 Following spec v2.1 §5, §16-§17:
 - Temporal window T=7 (spec §5)
-- Train 2018-2023 / Val 2024 / Test 2025 (spec §16)
+- Temporal locked split — no shuffling across time (spec §16 / RULE 10)
 - Training statistics from training data only (spec §17)
-- Temporal locked split — no shuffling across time
+
+Actual MVP tensor store (36-hour scope, memory §152.20): bay_of_bengal
+2022-01-01..2023-12-31 (730 daily days, grid 69x81), used in full — no
+held-out test year. The 2018-2023 / 2024 / 2025 window split (spec §16)
+applies to the future multi-year store, not to this MVP data. Within the
+available store, train/validation splits use a temporal holdout (val_fraction),
+never a random shuffle.
 
 Tensor layout (from Phase 2 harmonization):
   X.zarr: [time, channel, latitude, longitude] — 7 surface channels

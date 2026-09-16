@@ -53,11 +53,10 @@ export function uncertaintyColor(t: number): RGB {
   ];
 }
 
-const MIN_MAX = 0.05; // avoid pure-white temp extremes; keep visual range stable.
-
 /**
- * Domain for a temperature plane: min/max over non-null cells, expanded by a
- * small pad so the legend extremes stay readable.
+ * Domain for a temperature plane: exact min/max over VALID (non-null)
+ * ocean cells. No padding: the legend must show true data extremes (§11).
+ * Null land/missing cells never enter the scale (§10).
  */
 export function fieldDomain(values: (number | null)[][]): { min: number; max: number } {
   let min = Infinity;
@@ -71,42 +70,7 @@ export function fieldDomain(values: (number | null)[][]): { min: number; max: nu
   }
   if (!Number.isFinite(min) || !Number.isFinite(max)) return { min: 0, max: 1 };
   if (max - min < 1e-6) return { min: min - 1, max: max + 1 };
-  const pad = (max - min) * MIN_MAX;
-  return { min: min - pad, max: max + pad };
-}
-
-/** Convert a [lat][lon] number|null grid into RGBA rows for a canvas. */
-export function rasterize(
-  values: (number | null)[][],
-  sigma: (number | null)[][],
-  layer: 'temperature' | 'uncertainty',
-): Uint8ClampedArray | null {
-  const h = values.length;
-  const w = values[0]?.length ?? 0;
-  if (h === 0 || w === 0) return null;
-  const { min, max } = fieldDomain(values);
-  const span = max - min;
-  const out = new Uint8ClampedArray(h * w * 4);
-  for (let r = 0; r < h; r++) {
-    for (let c = 0; c < w; c++) {
-      const v = values[r][c];
-      const s = sigma[r][c];
-      const idx = (r * w + c) * 4;
-      if (v === null || s === null) {
-        out[idx + 3] = 0; // transparent land
-        continue;
-      }
-      const rgb =
-        layer === 'temperature'
-          ? viridis((v - min) / span)
-          : uncertaintyColor(Math.min(1, s / 3.0));
-      out[idx] = rgb[0];
-      out[idx + 1] = rgb[1];
-      out[idx + 2] = rgb[2];
-      out[idx + 3] = 255;
-    }
-  }
-  return out;
+  return { min, max };
 }
 
 export function rgbString(rgb: RGB): string {

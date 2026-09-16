@@ -124,6 +124,62 @@ Dependencies are declared per-module (`backend/pyproject.toml`, `ml/pyproject.to
 - Every behavioral change needs a test in the appropriate `tests/` directory.
 - Run the relevant modules' tests before reporting work complete.
 
+## Session resume (exact commands)
+
+```bash
+# Backend tests — run from backend/ with backend/.venv
+# (system python lacks deps like cachetools; root CWD breaks `app` imports)
+cd backend && .venv/bin/python -m pytest tests/unit tests/api
+# Full Python gate: pytest + ruff + contracts (run with an env that has pytest;
+# root .venv and backend/.venv both provide python 3.11)
+make test        # pytest over backend/ml/data-engineering (testpaths in pyproject.toml)
+make lint        # ruff check + ruff format --check
+make test-all    # lint + tests + contract verification
+
+# Frontend (run in frontend/)
+npm run test     # vitest run, jsdom
+npm run build    # tsc && vite build — must pass before reporting UI work done
+npm run test:coverage
+```
+
+```bash
+# Dev servers for browser QA (backend first, then frontend)
+OCEANEMBED_DEMO_CACHE_DIR=/home/joel/Projects/ERROR404/artifacts/demo_cache \
+  nohup backend/.venv/bin/uvicorn app.main:create_app --factory \
+  --host 127.0.0.1 --port 8000 > /tmp/opencode/backend.log 2>&1 &
+# run from backend/ (demo_cache_dir defaults to ../artifacts/demo_cache)
+# Frontend: vite :5173 proxies /api → localhost:8000 (vite.config.ts)
+```
+
+- Backend integration tests use sqlite in-memory — no external services needed.
+- `.env` holds Copernicus credentials and is gitignored. Never print, commit, or paste secrets.
+- Do NOT commit, amend, push, or open PRs unless explicitly asked. Leave the tree dirty; report files changed instead.
+- QA scripts/screenshots are scratch: write under `/tmp/opencode` or delete from the repo before finishing.
+
+## Testing quirks (verified)
+
+- Frontend runs under jsdom: no canvas pixels, no WebGL, `devicePixelRatio` may be absent. Components must degrade honestly (globe fallback, guarded `getContext`, capability checks) — never assume rendering APIs exist.
+- Leaflet must be `vi.mock`ed in unit tests (no map engine in jsdom). Mock `map/tileLayer/rectangle/popup/control`; give the mock map `getSize/getPanes/latLngToContainerPoint/containerPointToLayerPoint` when testing canvas layers.
+- React StrictMode double-invokes effects in dev: never rely on effect-run-once for initial Leaflet overlay state — set correct visibility/geometry at creation time.
+- `vitest run <path>` runs a single file; `vitest -t "<name>"` filters by test name.
+- Playwright (`frontend/node_modules/.bin/playwright`, chromium pre-installed) is the browser-QA path: assert real API values, hover/click the real map, collect console errors. `waitUntil: 'domcontentloaded'` is more reliable than `networkidle` (tile connections stay open).
+
+## Frontend map gotchas (verified, do not regress)
+
+- Backend grid rows run **south→north** (latitudes ascending 5.0→22.0). Any image-style rendering must flip rows; per-cell canvas rendering via `latLngToContainerPoint` is immune — prefer it.
+- Esri tile template order is `{z}/{y}/{x}`. CARTO basemaps now require an API key (tiles render watermarked without one). jsdelivr example images are blocked by CORS for WebGL textures — use unpkg.
+- Leaflet panes sit at z-index 200–700: floating legends/tooltips need explicit high z-index; `react-globe.gl` `polygonsData` requires valid GeoJSON Features (raw `{polygon}` objects crash its update loop).
+- Color scales and cell counts must use **valid ocean cells only** (null land excluded, no padded domains). Uncertainty uses the fixed σ scale; temperature normalizes over the true valid min/max.
+- `CellCanvas` (projection-bound canvas, one rect per valid cell) is the approved field renderer — do NOT reintroduce `L.imageOverlay` stretched rasters or domain-frame boxes.
+
+## Working agreements
+
+- TDD (RED → GREEN → refactor) for every behavioral change; 80%+ line coverage for backend/ML.
+- Reuse existing components, hooks (`useOceanExplorer`), API client guards, and `frontend/DESIGN.md` tokens. One new dependency needs justification.
+- Frontend truth chain: `contracts/api/*.schema.json` → `frontend/src/types/contracts.ts` → `api/client.ts` runtime guards. Never trust the wire.
+- Demo/fallback data path: `artifacts/demo_cache` (31 weekly BoB dates) served honestly as `fallback_demo`. `DemoCache` must NEVER synthesize data — regression test: `backend/tests/unit/test_cache.py::TestDemoCache::test_constructor_never_fabricates_cache_files`.
+- Interactive verification beats unit tests for map work: after `npm run test` + `npm run build`, drive `http://localhost:5173` with Playwright before claiming done.
+
 ## Canonical facts (LOCKED by problem statement)
 
 - Inputs: 7 surface channels — SST, SSS, SSH/SLA, current U, current V, wind U, wind V.
