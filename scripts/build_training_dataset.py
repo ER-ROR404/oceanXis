@@ -65,6 +65,43 @@ def compute_common_times(input_arrays: dict[str, xr.DataArray], target: xr.DataA
         common &= set(arr.time.values)
     return sorted(common)
 
+
+def build_ocean_mask(x_array: np.ndarray, min_valid_fraction: float = 0.5) -> np.ndarray:
+    """Static land/sea validity mask from the input tensor ``[T, C, H, W]``.
+
+    A cell is ocean only if EVERY input channel has finite data there for at
+    least ``min_valid_fraction`` of the record. Transient cloud/retrieval gaps
+    in a single channel do not turn a real ocean cell into land, but a cell
+    that is persistently missing in any channel (land, or never observed) is
+    masked out.
+
+    Regression: the previous rule used ``np.isfinite(x).any(axis=(0, 1))``,
+    which marked a cell ocean if ANY channel was valid at ANY time. Because the
+    inputs are only NaN over land, that produced a 94.7% "ocean" mask and the
+    served temperature field rendered as a solid rectangle over the Bay of
+    Bengal instead of following the coastline.
+
+    Args:
+        x_array: Input tensor of shape ``[time, channel, latitude, longitude]``.
+        min_valid_fraction: Per-channel valid-time fraction required for a cell
+            to count as ocean (default 0.5 — a strict majority).
+
+    Returns:
+        Boolean array ``[latitude, longitude]`` — True over ocean.
+
+    Raises:
+        ValueError: If ``x_array`` is not the expected 4-D ``[T, C, H, W]`` tensor.
+    """
+    if x_array.ndim != 4:
+        raise ValueError(
+            f"expected a 4-D [time, channel, lat, lon] input tensor, got shape {x_array.shape}"
+        )
+    # Fraction of the record each channel is finite: [channel, lat, lon].
+    valid_fraction = np.isfinite(x_array).mean(axis=0)
+    # Ocean only where EVERY channel clears the threshold.
+    return (valid_fraction >= min_valid_fraction).all(axis=0)
+
+
 # Variable mapping: catalog channel name -> NetCDF variable name in downloaded files
 VARIABLE_MAP = {
     "SST": "analysed_sst",
@@ -368,8 +405,10 @@ def main():
     logger.info("Step 5: Building validity mask")
     logger.info("=" * 60)
 
-    # Simple mask: ocean cells where inputs are not all-NaN
-    mask = np.isfinite(x_array).any(axis=(0, 1))  # [H, W]
+    # Static land/sea mask: every input channel must be valid for the majority
+    # of the record (see build_ocean_mask). Using `.any()` here marks land as
+    # ocean and makes the served field a rectangle over the whole domain.
+    mask = build_ocean_mask(x_array)  # [H, W]
     logger.info("Validity mask: %d/%d cells valid (%.1f%%)", mask.sum(), mask.size, 100.0 * mask.sum() / mask.size)
 
     # --- Step 6: Compute normalization stats ---

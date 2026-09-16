@@ -266,6 +266,123 @@ class TestMapFallback:
         assert "demo cache" in body["payload"]["metadata"]["data_source"].lower()
 
 
+def write_coastline_demo_cache(
+    root, ocean_mask: list[list[bool]], *, region: str = "bay_of_bengal", date: str = "2024-06-15"
+) -> None:
+    """Demo cache whose land cells are NaN exactly where ``ocean_mask`` is False."""
+    depths_m = [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000]
+    n_lat, n_lon = len(ocean_mask), len(ocean_mask[0])
+    region_dir = root / region
+    region_dir.mkdir(parents=True, exist_ok=True)
+    (region_dir / "coordinates.json").write_text(
+        json.dumps(
+            {
+                "region": region,
+                "lat": [5.0 + i for i in range(n_lat)],
+                "lon": [80.0 + i for i in range(n_lon)],
+                "depths_m": depths_m,
+                "n_lat": n_lat,
+                "n_lon": n_lon,
+                "n_depths": len(depths_m),
+            }
+        )
+    )
+    mu = np.full((len(depths_m), n_lat, n_lon), 5.0, dtype=np.float32)
+    log_var = np.zeros_like(mu)
+    for r in range(n_lat):
+        for c in range(n_lon):
+            if not ocean_mask[r][c]:
+                mu[:, r, c] = np.nan
+                log_var[:, r, c] = np.nan
+    np.savez(region_dir / f"{date}.npz", mu=mu, log_var=log_var)
+    (root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "region": region,
+                "model_version": "hybrid_v1",
+                "checkpoint": "best.pt",
+                "epoch": 83,
+                "val_loss": 0.3715,
+                "trained_on": "2023-12-31",
+                "dates": [date],
+                "channel_status": {f"channel_{i}": "available" for i in range(7)},
+                "generated_at": "2024-01-01T00:00:00+00:00",
+            }
+        )
+    )
+
+
+class TestMapFieldFollowsCoastline:
+    """Regression: the served field must follow a coastline, not be a rectangle.
+
+    Root cause of the original bug: the ocean mask was built with "any channel
+    valid at any time", so ~94.7% of the Bay of Bengal box was "ocean" (only a
+    1-cell border masked) and the map rendered the entire domain as a solid
+    box. This asserts the served payload keeps real land as null AND that land
+    appears strictly inside the domain (a border-only rectangle would leave
+    every interior cell ocean).
+    """
+
+    N_LAT, N_LON = 6, 8
+
+    @classmethod
+    def _ocean_mask(cls) -> list[list[bool]]:
+        land = [[False] * cls.N_LON for _ in range(cls.N_LAT)]
+        for c in range(cls.N_LON):
+            land[cls.N_LAT - 1][c] = True  # northern landmass
+        for c in range(4):
+            land[4][c] = True
+        for c in range(2):
+            land[3][c] = True
+        land[2][0] = True
+        land[2][4] = True  # interior island — impossible for a border-only mask
+        return [[not land[r][c] for c in range(cls.N_LON)] for r in range(cls.N_LAT)]
+
+    def test_served_field_is_coastline_shaped_not_a_rectangle(self, monkeypatch, tmp_path) -> None:
+        ocean = self._ocean_mask()
+        date = "2024-06-15"
+        write_coastline_demo_cache(tmp_path, ocean, date=date)
+
+        from app.core.config import Settings
+        from app.services.cache import DemoCache
+
+        demo = DemoCache(settings=Settings(demo_cache_dir=str(tmp_path)))
+        monkeypatch.setattr(map_route, "DemoCache", lambda settings=None: demo)
+        monkeypatch.setattr(
+            map_route, "InferenceClient", lambda: FakeClient(error=ModelNotLoadedError())
+        )
+
+        resp = make_client().get(
+            "/api/v1/ocean/map",
+            params={"region": "bay_of_bengal", "date": date, "depth": 100},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()["payload"]
+        values = payload["values"]
+        sigma = payload["sigma"]
+
+        # 1. Land survives as null (never fabricated ocean over land).
+        served_ocean = [[v is not None for v in row] for row in values]
+        assert served_ocean == ocean
+
+        # 2. sigma mirrors the value null-mask cell-for-cell.
+        assert [[s is not None for s in row] for row in sigma] == ocean
+
+        # 3. Not a rectangle: land exists strictly inside the domain, and both
+        #    ocean and land are present (a border-only mask would fail here).
+        n_lat, n_lon = self.N_LAT, self.N_LON
+        interior_land = any(
+            not served_ocean[r][c] for r in range(1, n_lat - 1) for c in range(1, n_lon - 1)
+        )
+        assert interior_land, "field has no interior land — looks like a rectangle"
+        assert any(v for row in served_ocean for v in row), "no ocean cells served"
+        assert not all(v for row in served_ocean for v in row), "every cell is ocean (rectangle)"
+
+        # 4. No fabricated 0.0 land fill.
+        assert all(v != 0.0 for row in values for v in row if v is not None)
+
+
 class TestMapErrors:
     def test_map_404_when_date_absent_everywhere(self, monkeypatch) -> None:
         fake = FakeClient(error=DataNotAvailableError())

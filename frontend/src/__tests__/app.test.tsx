@@ -15,6 +15,9 @@ describe('App Root Component', () => {
     render(<App />);
     expect(screen.getByText('OCEANEMBED')).toBeInTheDocument();
     expect(screen.getByText('Subsurface Ocean Explorer')).toBeInTheDocument();
+    expect(screen.getByTestId('hero-tagline')).toHaveTextContent(
+      'Satellite-derived Surface Observations → Subsurface Temperature Reconstruction',
+    );
     expect(
       screen.getByText(/Modeled reconstruction; trained on data through 2023-12-31\./i),
     ).toBeInTheDocument();

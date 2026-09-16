@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 
 import { ArgoValidationPanel } from '../components/validation/ArgoValidationPanel';
 import { CANONICAL_DEPTHS } from '../types/contracts';
@@ -60,9 +60,11 @@ describe('ArgoValidationPanel', () => {
 
   it('renders one depth row per canonical depth', () => {
     render(<ArgoValidationPanel />);
-    // surface and deepest canonical depths present as row headers
-    expect(screen.getByText('0 m')).toBeInTheDocument();
-    expect(screen.getByText('1000 m')).toBeInTheDocument();
+    // surface and deepest canonical depths present as table row headers
+    // (scoped to the table: the RMSE chart axis repeats depth labels).
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('0 m')).toBeInTheDocument();
+    expect(within(table).getByText('1000 m')).toBeInTheDocument();
     const rows = screen.getAllByRole('row');
     // header + 15 depth rows
     expect(rows).toHaveLength(CANONICAL_DEPTHS.length + 1);
@@ -80,8 +82,9 @@ describe('ArgoValidationPanel', () => {
 
   it('renders the limitations callout (thermocline warm bias, no hiding)', () => {
     render(<ArgoValidationPanel />);
-    expect(screen.getByText(/warm bias up to \+2\.2/)).toBeInTheDocument();
-    expect(screen.getByText(/thermocline/i)).toBeInTheDocument();
+    const callout = screen.getByTestId('argo-limitations');
+    expect(callout).toHaveTextContent(/warm bias up to \+2\.2/);
+    expect(callout).toHaveTextContent(/thermocline/i);
   });
 
   it('frames itself as aggregate, depth-wise validation', () => {
@@ -102,9 +105,17 @@ describe('ArgoValidationPanel', () => {
       vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }),
     );
     render(<ArgoValidationPanel />);
-    expect(screen.getByText('ARGO validation')).toBeInTheDocument();
+    expect(screen.getByText('Independent ARGO validation')).toBeInTheDocument();
     expect(screen.getByText(/1\.35/)).toBeInTheDocument();
     expect(screen.getByText(/285 of 291/i)).toBeInTheDocument();
     vi.unstubAllGlobals();
+  });
+
+  it('never implies a calibrated 95% confidence interval', () => {
+    render(<ArgoValidationPanel />);
+    const text = screen.getByTestId('argo-validation-panel').textContent ?? '';
+    expect(text).not.toMatch(/95%/);
+    expect(text.toLowerCase()).not.toMatch(/confidence/);
+    expect(text.toLowerCase()).not.toMatch(/accuracy/);
   });
 });

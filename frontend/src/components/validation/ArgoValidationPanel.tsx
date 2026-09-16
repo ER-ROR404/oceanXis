@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { ShieldCheck } from 'lucide-react';
+import { RmseDepthChart } from './RmseDepthChart';
 
 import type { ArgoValidationSummary } from '../../types/validation';
 import { parseArgoSummary } from '../../utils/validation';
@@ -47,12 +48,12 @@ export function ArgoValidationPanel({ summary }: ArgoValidationPanelProps) {
   return (
     <section
       data-testid="argo-validation-panel"
-      aria-label="ARGO validation"
+      aria-label="Independent ARGO validation"
       className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4"
     >
       <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-zinc-200">
         <ShieldCheck className="h-4 w-4 text-teal-400" aria-hidden="true" />
-        ARGO validation
+        Independent ARGO validation
         <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
           {s.model_version}
         </span>
@@ -81,6 +82,8 @@ export function ArgoValidationPanel({ summary }: ArgoValidationPanelProps) {
           <p className="font-mono-data text-lg text-zinc-100">{fmt(overall.correlation, 3)}</p>
         </div>
       </div>
+
+      <RmseDepthChart summary={s} />
 
       <div ref={rowsRef} className="mt-3 overflow-x-auto">
         <table className="w-full text-sm">
@@ -115,7 +118,7 @@ export function ArgoValidationPanel({ summary }: ArgoValidationPanelProps) {
         </table>
       </div>
 
-      <p className="mt-3 rounded-md border border-amber-900/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-200/90">
+      <p data-testid="argo-limitations" className="mt-3 rounded-md border border-amber-900/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-200/90">
         {limitations}
       </p>
 

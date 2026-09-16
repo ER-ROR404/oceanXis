@@ -88,6 +88,30 @@ describe('ApiClient', () => {
     expect(env.payload.lat).toBe(10.25);
   });
 
+  it('rejects a profile whose depths are array indexes instead of metres', async () => {
+    const malformed = {
+      ...PROFILE_OK,
+      payload: { ...PROFILE_OK.payload, depths: Array.from({ length: 15 }, (_, i) => i) },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(malformed)));
+    await expect(client.getProfile('bay_of_bengal', '2023-06-15', 10.25, 88.25)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('rejects a profile whose depths are out of canonical order', async () => {
+    const malformed = {
+      ...PROFILE_OK,
+      payload: { ...PROFILE_OK.payload, depths: [...CANONICAL_DEPTHS].reverse() },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(malformed)));
+    await expect(client.getProfile('bay_of_bengal', '2023-06-15', 10.25, 88.25)).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it('keeps the response depth array when decoding a profile', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(PROFILE_OK)));
+    const env = await client.getProfile('bay_of_bengal', '2023-06-15', 10.25, 88.25);
+    expect(env.payload.depths).toEqual([0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000]);
+  });
+
   it('rejects a payload missing sigma as ContractError (never blindly renders)', async () => {
     const malformed = { ...MAP_OK, payload: { ...MAP_OK.payload, sigma: undefined } };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(malformed)));
@@ -126,6 +150,31 @@ describe('ApiClient', () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe('MODEL_NOT_LOADED');
     expect(err.status).toBe(503);
+  });
+
+  it('aborts a hung request with NETWORK_TIMEOUT (the UI never freezes)', async () => {
+    // Emulate real fetch: reject only when the abort signal fires.
+    const fetchMock = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError')),
+          );
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const timed = new ApiClient('http://localhost:8000/api/v1', 20);
+    const err = await timed.getAvailability().catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('NETWORK_TIMEOUT');
+    // The abort signal is wired through to fetch.
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('clears the timeout on a fast response (no spurious abort)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(MAP_OK)));
+    const fast = new ApiClient('http://localhost:8000/api/v1', 50);
+    await expect(fast.getMap('bay_of_bengal', '2023-06-15', 0)).resolves.toBeDefined();
   });
 
   it('getHistory decodes region dates', async () => {

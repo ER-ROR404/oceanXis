@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import UTC, datetime
+try:
+    from datetime import UTC, datetime
+except ImportError:
+    from datetime import datetime, timezone
+    UTC = timezone.utc
 from typing import Any
 
 import numpy as np
@@ -36,6 +40,10 @@ class DemoCache:
         self._settings = settings or Settings()
         self._cache_dir = self._settings.demo_cache_dir
         self._manifest: dict[str, Any] | None = None
+        # NOTE: no bootstrap, no synthetic fallback. When the pre-built cache
+        # (ml/serving/build_demo_cache.py output) is absent, readers return
+        # None / [] and routes answer honestly (404/503). Fabricating
+        # analytic temperature fields here would be synthetic science data.
 
     @property
     def accessible(self) -> bool:

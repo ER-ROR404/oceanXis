@@ -117,6 +117,18 @@ class TestDemoCache:
         cache = make_cache(tmp_path)
         assert cache.available_dates("bay_of_bengal") == []
 
+    def test_constructor_never_fabricates_cache_files(self, tmp_path) -> None:
+        """No synthetic data, ever: constructing DemoCache on an empty dir must
+        not create region dirs, coordinates, npz files, or a manifest. Missing
+        data stays missing (honest unavailable), never fabricated."""
+        target = tmp_path / "empty-cache"
+        cache = DemoCache(settings=Settings(demo_cache_dir=str(target)))
+        assert not (target / "bay_of_bengal").exists()
+        assert not (target / "manifest.json").exists()
+        assert cache.manifest is None
+        assert cache.get_map("bay_of_bengal", "2023-09-01", 100) is None
+        assert cache.get_profile("bay_of_bengal", "2023-09-01", 15.0, 90.0) is None
+
     def test_available_dates_unknown_region_empty(self, tmp_path) -> None:
         write_demo_cache(tmp_path)
         cache = make_cache(tmp_path)

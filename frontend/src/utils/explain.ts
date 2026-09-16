@@ -10,7 +10,7 @@ export interface Explanations {
   sentences: string[];
 }
 
-const Z = 1.96; // 95% two-sided normal interval
+const Z = 1; // ±1σ model-uncertainty band. NOT 1.96: no calibrated 95% interval exists (phase-6 audit §calibration never performed).
 
 function formatTemp(t: number): string {
   return t.toFixed(1);
@@ -55,11 +55,11 @@ export function buildExplanation({ depths, temps, sigma }: ExplainerInput): Expl
     sentences.push('The water column is weakly stratified and nearly uniform.');
   }
 
-  // 95% uncertainty band using the sigma array.
+  // ±1σ model-uncertainty estimate using the sigma array (not a calibrated interval).
   const sigmaNearSurface = sigma.find((s) => s !== null && s > 0);
   if (sigmaNearSurface !== null && sigmaNearSurface !== undefined) {
     sentences.push(
-      `Typical 95% uncertainty band is +/- ${formatTemp(Z * sigmaNearSurface)} deg C near the surface.`,
+      `Model uncertainty estimate is ±${formatTemp(Z * sigmaNearSurface)} deg C near the surface (1 sigma).`,
     );
   } else {
     sentences.push('No uncertainty estimate is available for this cell.');

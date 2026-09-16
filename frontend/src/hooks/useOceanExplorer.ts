@@ -52,6 +52,7 @@ export interface OceanExplorer {
   setDate: (date: string) => void;
   setDepth: (depth: number) => void;
   selectCell: (lat: number, lon: number) => void;
+  clearSelection: () => void;
 }
 
 /** Provenance sentence for a region entry; null when the region has no data. */
@@ -111,6 +112,9 @@ export function useOceanExplorer(): OceanExplorer {
   const setDepth = useCallback((next: number) => setDepthState(next as Depth), []);
   const selectCell = useCallback((lat: number, lon: number) => {
     setSelected((current) => (current && current.lat === lat && current.lon === lon ? current : { lat, lon }));
+  }, []);
+  const clearSelection = useCallback(() => {
+    setSelected(null);
   }, []);
 
   // Capability report: fetched once, trusted only through the contract guard.
@@ -237,5 +241,6 @@ export function useOceanExplorer(): OceanExplorer {
     setDate,
     setDepth,
     selectCell,
+    clearSelection,
   };
 }

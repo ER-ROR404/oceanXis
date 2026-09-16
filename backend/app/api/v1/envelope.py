@@ -9,7 +9,11 @@ own grid arrays (never guessed — RULE 6/7), land stays None (never 0.0, D9).
 from __future__ import annotations
 
 import math
-from datetime import UTC, datetime
+try:
+    from datetime import UTC, datetime
+except ImportError:
+    from datetime import datetime, timezone
+    UTC = timezone.utc
 from typing import Any
 
 from app.core.config import Settings

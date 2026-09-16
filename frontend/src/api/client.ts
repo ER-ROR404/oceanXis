@@ -129,6 +129,24 @@ function expectMapPayload(value: unknown): MapPayload {
   };
 }
 
+/**
+ * Profile depth axis: exactly the canonical 15 standard depths, in canonical
+ * order (meters). A wire array of array-indexes (0..14) or a reordered list
+ * would silently pair the wrong temperature with each depth, so it is rejected
+ * instead of being substituted.
+ */
+function expectProfileDepths(value: unknown): Depth[] {
+  if (!Array.isArray(value) || value.length !== CANONICAL_DEPTHS.length) {
+    throw new ContractError(`profile depths: expected ${CANONICAL_DEPTHS.length} canonical depths`);
+  }
+  for (let i = 0; i < CANONICAL_DEPTHS.length; i++) {
+    if (value[i] !== CANONICAL_DEPTHS[i]) {
+      throw new ContractError('profile depths: must be the canonical depths in metres, in order');
+    }
+  }
+  return value as Depth[];
+}
+
 function expectProfilePayload(value: unknown): ProfilePayload {
   const p = requireObject(value, 'profile payload');
   if (!REGION_IDS.includes(p['region'] as Region)) throw new ContractError('profile: unknown region');
@@ -136,6 +154,7 @@ function expectProfilePayload(value: unknown): ProfilePayload {
     throw new ContractError('profile: invalid date');
   }
   if (!isNumberLike(p['lat']) || !isNumberLike(p['lon'])) throw new ContractError('profile: invalid lat/lon');
+  const depths = expectProfileDepths(p['depths']);
   const temperatures = expectDepthList(p['temperatures'], 'temperatures');
   const sigma = expectDepthList(p['sigma'], 'sigma');
   for (let i = 0; i < temperatures.length; i++) {
@@ -148,7 +167,7 @@ function expectProfilePayload(value: unknown): ProfilePayload {
     date: p['date'] as string,
     lat: p['lat'] as number,
     lon: p['lon'] as number,
-    depths: [...CANONICAL_DEPTHS],
+    depths,
     temperatures,
     sigma,
     metadata: expectMetadata(p["metadata"]) as unknown as ProfilePayload["metadata"],
@@ -270,8 +289,17 @@ function expectRegionAvailability(value: unknown): RegionAvailability {
   };
 }
 
+/**
+ * Default per-request timeout. A hung backend must degrade honestly instead of
+ * leaving the explorer stuck on a loading skeleton forever.
+ */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
 export class ApiClient {
-  constructor(readonly baseUrl: string) {}
+  constructor(
+    readonly baseUrl: string,
+    private readonly timeoutMs: number = REQUEST_TIMEOUT_MS,
+  ) {}
 
   async getMap(region: Region, date: string, depth: Depth): Promise<PredictionEnvelope<MapPayload>> {
     const params = new URLSearchParams({ region, date, depth: String(depth) });
@@ -305,31 +333,56 @@ export class ApiClient {
     return expectAvailability(body);
   }
 
+  /**
+   * Fetch with an abort-based timeout. The whole request (connect + body read)
+   * is bounded, and a timeout is reported distinctly from an unreachable host so
+   * the UI can say "did not respond in time" rather than freezing.
+   */
   private async _request(path: string): Promise<unknown> {
-    let resp: Response;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      resp = await fetch(`${this.baseUrl}${path}`, { headers: { accept: 'application/json' } });
-    } catch (cause) {
-      throw new ApiError(0, 'NETWORK_FAILURE', 'Could not reach the OceanEmbed backend.', { cause: String(cause) });
-    }
-
-    let body: unknown;
-    try {
-      body = await resp.json();
-    } catch {
-      throw new ContractError(`non-JSON response (${resp.status}) from ${path}`);
-    }
-
-    if (!resp.ok) {
-      const err = requireObject(body, 'error envelope');
-      const error = requireObject(err['error'], 'error');
-      const code = error['code'];
-      const message = error['message'];
-      if (typeof code !== 'string' || typeof message !== 'string') {
-        throw new ContractError('error envelope missing code/message');
+      let resp: Response;
+      try {
+        resp = await fetch(`${this.baseUrl}${path}`, {
+          headers: { accept: 'application/json' },
+          signal: controller.signal,
+        });
+      } catch (cause) {
+        throw this._networkError(controller.signal.aborted, cause);
       }
-      throw new ApiError(resp.status, code, message, error['details'] as Record<string, unknown> | undefined);
+
+      let body: unknown;
+      try {
+        body = await resp.json();
+      } catch (cause) {
+        // An abort that lands while reading the body is still a timeout.
+        if (controller.signal.aborted) throw this._networkError(true, cause);
+        throw new ContractError(`non-JSON response (${resp.status}) from ${path}`);
+      }
+
+      if (!resp.ok) {
+        const err = requireObject(body, 'error envelope');
+        const error = requireObject(err['error'], 'error');
+        const code = error['code'];
+        const message = error['message'];
+        if (typeof code !== 'string' || typeof message !== 'string') {
+          throw new ContractError('error envelope missing code/message');
+        }
+        throw new ApiError(resp.status, code, message, error['details'] as Record<string, unknown> | undefined);
+      }
+      return body;
+    } finally {
+      clearTimeout(timer);
     }
-    return body;
+  }
+
+  /** Honest network failure: timeout and unreachable are different causes. */
+  private _networkError(timedOut: boolean, cause: unknown): ApiError {
+    return timedOut
+      ? new ApiError(0, 'NETWORK_TIMEOUT', 'The OceanEmbed backend did not respond in time.', {
+          cause: String(cause),
+        })
+      : new ApiError(0, 'NETWORK_FAILURE', 'Could not reach the OceanEmbed backend.', { cause: String(cause) });
   }
 }

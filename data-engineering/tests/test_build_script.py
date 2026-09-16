@@ -75,6 +75,90 @@ class TestIsCleanNc:
         assert build._is_clean_nc(Path(name)) is expected
 
 
+class TestBuildOceanMask:
+    """Static land/sea mask from the input tensor.
+
+    Regression: the mask was built with ``np.isfinite(x).any(axis=(0, 1))``,
+    which marks a cell ocean if ANY channel was valid at ANY time. Real inputs
+    are only NaN over land, so that rule made 94.7% of the Bay of Bengal box
+    "ocean" and the temperature field rendered as a rectangle. A cell must be
+    valid in EVERY channel for the majority of the record instead.
+    """
+
+    def _x(self, channel_values: list[list[float]]) -> np.ndarray:
+        """Build [T, C, H=1, W] from per-channel value lists."""
+        c = len(channel_values)
+        t = len(channel_values[0])
+        arr = np.zeros((t, c, 1, c), dtype=np.float32)
+        for ci, series in enumerate(channel_values):
+            arr[:, ci, 0, ci] = series
+        return arr
+
+    def test_all_channels_valid_is_ocean(self) -> None:
+        x = np.ones((4, 3, 2, 2), dtype=np.float32)
+        mask = build.build_ocean_mask(x)
+        assert mask.shape == (2, 2)
+        assert mask.dtype == bool
+        assert mask.all()
+
+    def test_cell_missing_in_any_channel_is_land(self) -> None:
+        # Channel 1 is always NaN at column 1 -> that cell is land.
+        x = np.ones((4, 2, 1, 2), dtype=np.float32)
+        x[:, 1, :, 1] = np.nan
+        mask = build.build_ocean_mask(x)
+        assert mask.tolist() == [[True, False]]
+
+    def test_transient_cloud_gap_stays_ocean(self) -> None:
+        # One channel NaN on 40% of days: still ocean (majority valid).
+        x = np.ones((10, 1, 1, 1), dtype=np.float32)
+        x[:4, 0, 0, 0] = np.nan
+        assert build.build_ocean_mask(x).all()
+
+    def test_persistent_cloud_gap_becomes_land(self) -> None:
+        # One channel NaN on 60% of days: below threshold -> land.
+        x = np.ones((10, 1, 1, 1), dtype=np.float32)
+        x[:6, 0, 0, 0] = np.nan
+        assert not build.build_ocean_mask(x).any()
+
+    def test_rejects_non_4d_input(self) -> None:
+        with pytest.raises(ValueError):
+            build.build_ocean_mask(np.ones((2, 2)))
+
+    def test_coastline_has_interior_land_not_a_border_rectangle(self) -> None:
+        """A real coastline mask leaves land strictly inside the domain.
+
+        The original bug masked only the outer ring (land ~absent), which is the
+        signature of a rectangle over the domain. A genuine land/sea mask has
+        interior land cells.
+        """
+        n_lat, n_lon = 6, 8
+        x = np.ones((5, 3, n_lat, n_lon), dtype=np.float32)  # ocean: all channels finite
+        land = np.zeros((n_lat, n_lon), dtype=bool)
+        land[n_lat - 1, :] = True  # northern landmass
+        land[4, :4] = True
+        land[2, 4] = True  # interior island
+        for r in range(n_lat):
+            for c in range(n_lon):
+                if land[r, c]:
+                    # Land is overwhelmingly missing, but a SINGLE finite value
+                    # survives in one channel/day — exactly the contamination
+                    # that made the old ``.any(axis=(0, 1))`` rule call land
+                    # "ocean" and paint the whole domain as a rectangle.
+                    x[:, :, r, c] = np.nan
+                    x[0, 0, r, c] = 1.0
+
+        # Sanity: the old any-based rule would call every cell ocean here.
+        assert np.isfinite(x).any(axis=(0, 1)).all(), "fixture must reproduce the bug shape"
+
+        mask = build.build_ocean_mask(x)
+        assert mask.shape == (n_lat, n_lon)
+        assert not mask[n_lat - 1].any()  # land preserved
+        assert mask[0].all()  # open ocean preserved
+        # NOT a rectangle: land exists strictly inside the domain.
+        assert (~mask[1:-1, 1:-1]).any()
+        assert mask.any() and not mask.all()
+
+
 class TestComputeCommonTimes:
     """Intersection over all inputs AND the GLORYS target axis.
 

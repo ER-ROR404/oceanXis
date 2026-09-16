@@ -25,6 +25,13 @@ describe('Header', () => {
     expect(screen.getByText(/Historical reconstruction/i)).toBeInTheDocument();
     expect(screen.queryByText(/realtime|live now/i)).toBeNull();
   });
+
+  it('states the core value in the hero tagline', () => {
+    render(<Header />);
+    expect(screen.getByTestId('hero-tagline')).toHaveTextContent(
+      'Satellite-derived Surface Observations → Subsurface Temperature Reconstruction',
+    );
+  });
 });
 
 describe('StatusBanner', () => {
